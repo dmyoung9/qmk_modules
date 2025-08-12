@@ -6,7 +6,7 @@ static inline uint16_t oled_offset(uint8_t x_px, uint8_t page) {
 }
 
 // Rotation-safe, simple pixel clear for any rectangle.
-static inline void clear_rect(uint8_t x_px, uint8_t y_px, uint8_t w, uint8_t h) {
+void clear_rect(uint8_t x_px, uint8_t y_px, uint8_t w, uint8_t h) {
     if (!w || !h) return;
     if (x_px >= OLED_DISPLAY_WIDTH || y_px >= OLED_DISPLAY_HEIGHT) return;
 
@@ -23,12 +23,12 @@ static inline void clear_rect(uint8_t x_px, uint8_t y_px, uint8_t w, uint8_t h) 
 }
 
 // Keep the shim the same
-static inline void clear_span16(uint8_t x_px, uint8_t y_px) {
+void clear_span16(uint8_t x_px, uint8_t y_px) {
     clear_rect(x_px, y_px, 16, 8);
 }
 
 // General blitter: handles any y offset; keeps fast path for page-aligned
-static inline void draw_slice_px(const slice_t *s, uint8_t x_px, uint8_t y_px) {
+void draw_slice_px(const slice_t *s, uint8_t x_px, uint8_t y_px) {
     if (!s || !s->width || !s->pages) return;
     if (x_px >= OLED_DISPLAY_WIDTH || y_px >= OLED_DISPLAY_HEIGHT) return;
 
