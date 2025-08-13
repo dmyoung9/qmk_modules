@@ -1,12 +1,16 @@
-#include "typing_stats_core.h"
+#include "typing_stats_private.h"
+#if TS_ENABLE_EEPROM_STORAGE
 #include "typing_stats_storage.h"
+#endif
 #include "typing_stats_position.h"
 #include "typing_stats_layer.h"
 #include "typing_stats_modifier.h"
-#include "typing_stats_core_internal.h"
 
 #if TS_ENABLE_BIGRAM_STATS
 #    include "typing_stats_bigram.h"
+#endif
+#if TS_ENABLE_WPM_TRACKING
+#    include "typing_stats_wpm.h"
 #endif
 
 #include "timer.h"
@@ -19,20 +23,28 @@ static uint32_t      g_event_counter      = 0;
 static layer_state_t g_layer_state_cached = 0;
 
 // Internal functions
-static void ts_update_wpm_ema(uint16_t wpm);
-static void ts_start_new_session(void);
+static void ts_start_new_session_internal_impl(void);
+ts_hand_t ts_pos_to_hand_internal(uint8_t row, uint8_t col);
 
-// Public core API
-void ts_init(void) {
+// Internal core API (renamed to avoid conflicts with public API)
+void ts_init_internal(void) {
     if (g_initialized) return;
 
+#if TS_ENABLE_EEPROM_STORAGE
     // Load data from storage
     ts_storage_load(&g_blob);
+#else
+    // Initialize with defaults when storage is disabled
+    ts_reset_defaults();
+#endif
 
     g_layer_state_cached = layer_state;
     g_initialized        = true;
 
     // Initialize submodules
+#if TS_ENABLE_WPM_TRACKING
+    ts_wpm_init();
+#endif
 #if TS_ENABLE_LAYER_TIME
     ts_layer_init();
 #endif
@@ -40,50 +52,40 @@ void ts_init(void) {
     ts_bigram_init();
 #endif
 
-    // Start new session if needed
+    // Session management
+#if TS_AUTO_NEW_SESSION_ON_BOOT
+    // Always start new session on boot (preserves lifetime stats)
+    ts_start_new_session_internal_impl();
+#else
+    // Start new session only if never started before
     if (g_blob.c.session_start_time == 0) {
-        ts_start_new_session();
+        ts_start_new_session_internal_impl();
     }
+#endif
 }
 
-void ts_task_10ms(void) {
+void ts_task_10ms_internal(void) {
     if (!g_initialized) return;
 
-    // Update WPM tracking ~every 50-100ms
-    static uint32_t last = 0;
-    uint32_t        now  = timer_read32();
-    if (now - last >= 50) {
-        last         = now;
-        uint16_t wpm = get_current_wpm();
+#if TS_ENABLE_WPM_TRACKING
+    // Update WPM tracking
+    ts_wpm_task();
+#endif
 
-        // Track max WPM
-        if (wpm > g_blob.c.max_wpm) {
-            g_blob.c.max_wpm = wpm;
-            ts_core_mark_dirty();
-        }
-
-        // Track session max WPM
-        if (wpm > g_blob.c.session_max_wpm) {
-            g_blob.c.session_max_wpm = wpm;
-            ts_core_mark_dirty();
-        }
-
-        // Update EMA
-        ts_update_wpm_ema(wpm);
-    }
-
+#if TS_ENABLE_EEPROM_STORAGE
     // Handle periodic flushing
     ts_storage_task();
+#endif
 }
 
-void ts_on_keyevent(keyrecord_t *record, uint16_t keycode) {
+void ts_on_keyevent_internal(keyrecord_t *record, uint16_t keycode) {
     if (!record->event.pressed || !g_initialized) return;
 
     // Update core counters
     g_blob.c.total_presses++;
     g_blob.c.session_presses++;
 
-    ts_hand_t hand = ts_pos_to_hand(record->event.key.row, record->event.key.col);
+    ts_hand_t hand = ts_pos_to_hand_internal(record->event.key.row, record->event.key.col);
     if (hand == TS_HAND_LEFT)      g_blob.c.left_hand_presses++;
     else if (hand == TS_HAND_RIGHT) g_blob.c.right_hand_presses++;
 
@@ -100,7 +102,7 @@ void ts_on_keyevent(keyrecord_t *record, uint16_t keycode) {
     g_event_counter++;
 }
 
-layer_state_t ts_on_layer_change(layer_state_t new_state) {
+layer_state_t ts_on_layer_change_internal(layer_state_t new_state) {
     g_layer_state_cached = new_state;
 
 #if TS_ENABLE_LAYER_TIME
@@ -110,52 +112,29 @@ layer_state_t ts_on_layer_change(layer_state_t new_state) {
     return new_state;
 }
 
-static void ts_start_new_session(void) {
+static void ts_start_new_session_internal_impl(void) {
     g_blob.c.session_presses    = 0;
     g_blob.c.session_start_time = timer_read32();
-    g_blob.c.session_max_wpm    = 0;
+#if TS_ENABLE_WPM_TRACKING
+    ts_wpm_reset_session();
+#endif
     ts_core_mark_dirty();
 }
 
-// Basic getters
-uint16_t ts_get_current_wpm(void) {
-    return get_current_wpm();
+// Public API wrapper for session management
+void ts_start_new_session_internal(void) {
+    if (!g_initialized) return;
+    ts_start_new_session_internal_impl();
 }
 
-uint16_t ts_get_avg_wpm(void) {
-    return g_blob.c.avg_wpm_ema;
+// Utility functions for public API
+uint16_t ts_pos_to_index_internal(uint8_t row, uint8_t col) {
+    return (uint16_t)(row * MATRIX_COLS + col);
 }
 
-uint16_t ts_get_max_wpm(void) {
-    return g_blob.c.max_wpm;
-}
-
-uint32_t ts_get_total_presses(void) {
-    return g_blob.c.total_presses;
-}
-
-uint32_t ts_get_session_presses(void) {
-    return g_blob.c.session_presses;
-}
-
-uint16_t ts_get_session_max_wpm(void) {
-    return g_blob.c.session_max_wpm;
-}
-
-uint32_t ts_get_session_time_minutes(void) {
-    if (g_blob.c.session_start_time == 0) return 0;
-    return (timer_read32() - g_blob.c.session_start_time) / (60 * 1000);
-}
-
-// Hand balance
-float ts_get_left_hand_ratio(void) {
-    uint32_t total = g_blob.c.left_hand_presses + g_blob.c.right_hand_presses;
-    if (total == 0) return 0.5f;
-    return (float)g_blob.c.left_hand_presses / total;
-}
-
-float ts_get_right_hand_ratio(void) {
-    return 1.0f - ts_get_left_hand_ratio();
+void ts_index_to_pos_internal(uint16_t index, uint8_t *row_out, uint8_t *col_out) {
+    if (row_out) *row_out = (uint8_t)(index / MATRIX_COLS);
+    if (col_out) *col_out = (uint8_t)(index % MATRIX_COLS);
 }
 
 // Internal state access for submodules
@@ -164,7 +143,10 @@ ts_counters_t *ts_core_get_counters(void) {
 }
 
 void ts_core_mark_dirty(void) {
+#if TS_ENABLE_EEPROM_STORAGE
     ts_storage_mark_dirty();
+#endif
+    // When storage is disabled, this function does nothing
 }
 
 bool ts_core_is_initialized(void) {
@@ -177,6 +159,18 @@ uint32_t ts_core_get_event_counter(void) {
 
 void ts_core_increment_event_counter(void) {
     g_event_counter++;
+}
+
+// Legacy compatibility function
+uint32_t ts_get_session_time_minutes_internal(void) {
+    if (!g_initialized || g_blob.c.session_start_time == 0) return 0;
+    uint32_t elapsed_ms = timer_read32() - g_blob.c.session_start_time;
+    return elapsed_ms / (60 * 1000);
+}
+
+// Legacy wrapper for backward compatibility
+uint32_t ts_get_session_time_minutes(void) {
+    return ts_get_session_time_minutes_internal();
 }
 
 void ts_reset_defaults(void) {
@@ -194,37 +188,31 @@ void ts_reset_defaults(void) {
 #endif
 }
 
-void ts_eeconfig_init_user(void) {
+void ts_eeconfig_init_user_internal(void) {
     ts_reset_defaults();
+#if TS_ENABLE_EEPROM_STORAGE
     ts_storage_force_flush();
+#endif
 }
 
-// Utility functions
-uint16_t ts_pos_to_index(uint8_t row, uint8_t col) {
-    return (uint16_t)row * MATRIX_COLS + col;
-}
-
-void ts_index_to_pos(uint16_t index, uint8_t *row_out, uint8_t *col_out) {
-    if (row_out) *row_out = index / MATRIX_COLS;
-    if (col_out) *col_out = index % MATRIX_COLS;
-}
-
-ts_hand_t ts_pos_to_hand(uint8_t row, uint8_t col) {
+// Utility functions (kept for internal use)
+ts_hand_t ts_pos_to_hand_internal(uint8_t row, uint8_t col) {
     if (col < MATRIX_COLS / 2) return TS_HAND_LEFT;
     if (col >= (MATRIX_COLS + 1) / 2) return TS_HAND_RIGHT;
     return TS_HAND_UNKNOWN;
 }
 
-// Internal helper functions
-static void ts_update_wpm_ema(uint16_t wpm) {
-    uint16_t ema  = g_blob.c.avg_wpm_ema;
-    int16_t  diff = (int16_t)wpm - (int16_t)ema;
-    ema += (int16_t)((TS_WPM_EMA_ALPHA_NUM * diff) / TS_WPM_EMA_ALPHA_DEN);
-    if (ema != g_blob.c.avg_wpm_ema) {
-        g_blob.c.avg_wpm_ema = ema;
-        ts_core_mark_dirty();
-    }
+// Legacy compatibility wrapper
+ts_hand_t ts_pos_to_hand_legacy(uint8_t row, uint8_t col) {
+    return ts_pos_to_hand_internal(row, col);
 }
+
+// Legacy wrapper for backward compatibility
+ts_hand_t ts_pos_to_hand(uint8_t row, uint8_t col) {
+    return ts_pos_to_hand_internal(row, col);
+}
+
+// Internal helper functions
 
 uint32_t ts_core_get_pos_presses(uint16_t pos_index) {
     if (pos_index >= (MATRIX_ROWS * MATRIX_COLS)) return 0;

@@ -1,10 +1,16 @@
 #pragma once
 
-#include <stdbool.h>
-#include <stdint.h>
+/**
+ * @file typing_stats_storage.h
+ * @brief Storage Package - Internal API
+ *
+ * This package handles EEPROM storage and persistence of typing statistics.
+ * External code should not use these functions directly.
+ *
+ * @warning This is an internal header - do not include directly
+ */
 
-// Forward declaration
-typedef struct ts_blob ts_blob_t;
+#include "typing_stats_private.h"
 
 // Storage module API
 void ts_storage_load(ts_blob_t *blob);

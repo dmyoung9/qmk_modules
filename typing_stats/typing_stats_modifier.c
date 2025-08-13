@@ -1,5 +1,4 @@
 #include "typing_stats_modifier.h"
-#include "typing_stats_core.h"
 
 void ts_mod_record_press(uint8_t mods) {
     if (!ts_core_is_initialized()) return;

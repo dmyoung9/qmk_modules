@@ -1,5 +1,4 @@
 #include "typing_stats_layer.h"
-#include "typing_stats_core.h"
 #include "timer.h"
 
 #if TS_ENABLE_LAYER_TIME

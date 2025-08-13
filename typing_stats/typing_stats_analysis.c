@@ -1,5 +1,4 @@
 #include "typing_stats_analysis.h"
-#include "typing_stats_core.h"
 #include "typing_stats_position.h"
 #include "typing_stats_layer.h"
 #include "typing_stats_modifier.h"
@@ -48,10 +47,12 @@ void ts_analysis_get_summary(ts_summary_t *summary) {
     // Basic statistics
     summary->total_lifetime_presses = ts_get_total_presses();
     summary->session_presses        = ts_get_session_presses();
+#if TS_ENABLE_WPM_TRACKING
     summary->current_wpm            = ts_get_current_wpm();
-    summary->avg_wpm                = ts_get_avg_wpm();       // fixed typo
+    summary->avg_wpm                = ts_get_avg_wpm();
     summary->max_wpm                = ts_get_max_wpm();
     summary->session_max_wpm        = ts_get_session_max_wpm();
+#endif
     summary->left_hand_ratio        = ts_get_left_hand_ratio();
 
     // Most used elements

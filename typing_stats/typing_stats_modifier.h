@@ -1,6 +1,16 @@
 #pragma once
 
-#include "typing_stats_core.h"
+/**
+ * @file typing_stats_modifier.h
+ * @brief Modifier Analysis Package - Internal API
+ *
+ * This package provides modifier key usage tracking and analysis.
+ * External code should use the functions exposed in typing_stats_public.h
+ *
+ * @warning This is an internal header - do not include directly
+ */
+
+#include "typing_stats_private.h"
 
 // Modifier tracking API
 void ts_mod_record_press(uint8_t mods);

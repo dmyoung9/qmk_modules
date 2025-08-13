@@ -1,17 +1,22 @@
 #pragma once
 
-#include "typing_stats_core.h"
+/**
+ * @file typing_stats_bigram.h
+ * @brief Bigram Analysis Package - Internal API
+ *
+ * This package provides key sequence (bigram) tracking and analysis.
+ * External code should use the functions exposed in typing_stats_public.h
+ *
+ * @warning This is an internal header - do not include directly
+ */
+
+#include "typing_stats_private.h"
 
 #if TS_ENABLE_BIGRAM_STATS
 
 #define TS_MAX_BIGRAMS 64
 
-// Bigram data structure
-typedef struct {
-    uint8_t  key1_pos;
-    uint8_t  key2_pos;
-    uint16_t count;
-} ts_bigram_t;
+// Note: ts_bigram_t is defined in typing_stats_public.h to avoid conflicts
 
 // Bigram tracking API
 void ts_bigram_init(void);

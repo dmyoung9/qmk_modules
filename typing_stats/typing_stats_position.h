@@ -1,6 +1,16 @@
 #pragma once
 
-#include "typing_stats_core.h"
+/**
+ * @file typing_stats_position.h
+ * @brief Position Analysis Package - Internal API
+ *
+ * This package provides key position usage tracking and analysis.
+ * External code should use the functions exposed in typing_stats_public.h
+ *
+ * @warning This is an internal header - do not include directly
+ */
+
+#include "typing_stats_private.h"
 
 // Position tracking API
 void ts_pos_record_press(uint8_t row, uint8_t col);

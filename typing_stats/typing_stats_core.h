@@ -1,96 +1,38 @@
 #pragma once
 
-#include <stdbool.h>
-#include <stdint.h>
-#include QMK_KEYBOARD_H
+/**
+ * @file typing_stats_core.h
+ * @brief Core typing statistics - Internal API
+ *
+ * This header is for internal use by the typing statistics module.
+ * External code should use typing_stats_public.h instead.
+ *
+ * @warning Do not include this header directly in external code
+ */
 
-// ---------- Configuration ----------
-#ifndef TS_MAX_LAYERS
-#    define TS_MAX_LAYERS 8
-#endif
-#ifndef TS_FLUSH_SECONDS
-#    define TS_FLUSH_SECONDS 120
-#endif
-#ifndef TS_FLUSH_EVENTS
-#    define TS_FLUSH_EVENTS 2000
-#endif
-#ifndef TS_WPM_EMA_ALPHA_NUM
-#    define TS_WPM_EMA_ALPHA_NUM 1
-#endif
-#ifndef TS_WPM_EMA_ALPHA_DEN
-#    define TS_WPM_EMA_ALPHA_DEN 8
-#endif
+#include "typing_stats_private.h"
 
-// Feature flags
-#ifndef TS_ENABLE_LAYER_TIME
-#    define TS_ENABLE_LAYER_TIME 0
-#endif
-#ifndef TS_ENABLE_BIGRAM_STATS
-#    define TS_ENABLE_BIGRAM_STATS 0
-#endif
-#ifndef TS_ENABLE_ADVANCED_ANALYSIS
-#    define TS_ENABLE_ADVANCED_ANALYSIS 0
-#endif
+// Legacy compatibility - these functions are now internal
+// External code should use typing_stats_public.h
 
-// Magic and version for EEPROM validation
-#define TS_MAGIC 0x54535432u // "TST2"
-#define TS_VERSION 0x0004
+// Internal core functions - used by typing_stats_api.c
+void ts_init_internal(void);
+void ts_task_10ms_internal(void);
+void ts_on_keyevent_internal(keyrecord_t *record, uint16_t keycode);
+layer_state_t ts_on_layer_change_internal(layer_state_t new_state);
+void ts_eeconfig_init_user_internal(void);
+void ts_start_new_session_internal(void);
 
-// Hand identification for split keyboards
-typedef enum {
-    TS_HAND_LEFT,
-    TS_HAND_RIGHT,
-    TS_HAND_UNKNOWN
-} ts_hand_t;
+// Internal utility functions
+uint16_t ts_pos_to_index_internal(uint8_t row, uint8_t col);
+void ts_index_to_pos_internal(uint16_t index, uint8_t *row_out, uint8_t *col_out);
+ts_hand_t ts_pos_to_hand_internal(uint8_t row, uint8_t col);
+ts_hand_t ts_pos_to_hand(uint8_t row, uint8_t col);  // Legacy compatibility
 
-// Per-position press counter
-typedef struct {
-    uint16_t presses;
-} ts_pos_t;
-
-// Statistics summary structure
-typedef struct {
-    uint32_t total_lifetime_presses;
-    uint32_t session_presses;
-    uint16_t current_wpm;
-    uint16_t avg_wpm;
-    uint16_t max_wpm;
-    uint16_t session_max_wpm;
-    float    left_hand_ratio;
-    uint8_t  most_used_layer;
-    uint8_t  most_used_mod;
-    uint16_t most_used_pos_index;
-} ts_summary_t;
-
-// Forward declarations for internal data structure
-typedef struct ts_counters ts_counters_t;
-typedef struct ts_blob     ts_blob_t;
-
-// Core system state access (implemented in typing_stats_core.c)
-ts_counters_t *ts_core_get_counters(void);
-void           ts_core_mark_dirty(void);
-bool           ts_core_is_initialized(void);
-uint32_t       ts_core_get_event_counter(void);
-void           ts_core_increment_event_counter(void);
-
-// Utility functions
-uint16_t  ts_pos_to_index(uint8_t row, uint8_t col);
-void      ts_index_to_pos(uint16_t index, uint8_t *row_out, uint8_t *col_out);
-ts_hand_t ts_pos_to_hand(uint8_t row, uint8_t col);
-
-uint16_t ts_get_current_wpm(void);
-uint16_t ts_get_avg_wpm(void);
-uint16_t ts_get_max_wpm(void);
-uint16_t ts_get_session_max_wpm(void);
-uint32_t ts_get_total_presses(void);
-uint32_t ts_get_session_presses(void);
+// Legacy compatibility functions (for backward compatibility)
+bool ts_core_is_initialized(void);
+uint32_t ts_core_get_event_counter(void);
 uint32_t ts_get_session_time_minutes(void);
-float    ts_get_left_hand_ratio(void);
-float    ts_get_right_hand_ratio(void);
-
-uint32_t ts_core_get_pos_presses(uint16_t pos_index);        // 0..(MATRIX_ROWS*MATRIX_COLS-1)
-uint32_t ts_core_get_consecutive_same_finger(void);
-uint32_t ts_core_get_finger_rolls(void);
 
 #if TS_ENABLE_BIGRAM_STATS
 void    ts_core_bigram_clear(void);

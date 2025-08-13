@@ -1,5 +1,4 @@
 #include "typing_stats_position.h"
-#include "typing_stats_core.h"
 
 #ifndef TS_POS_COUNT
 #    define TS_POS_COUNT (MATRIX_ROWS * MATRIX_COLS)
@@ -14,7 +13,8 @@ void ts_pos_record_press(uint8_t row, uint8_t col) {
     ts_core_pos_increment_by_index(index);
 
     // Record hand balance
-    ts_hand_t hand = ts_pos_to_hand(row, col);
+    extern ts_hand_t ts_pos_to_hand_internal(uint8_t row, uint8_t col);
+    ts_hand_t hand = ts_pos_to_hand_internal(row, col);
     ts_pos_record_hand_press(hand);
 }
 

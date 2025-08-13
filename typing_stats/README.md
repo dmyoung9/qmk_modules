@@ -1,19 +1,17 @@
-# QMK Typing Statistics Module API Documentation
+# QMK Typing Statistics Module v2.0
 
 A comprehensive keyboard usage tracking module for QMK that collects detailed typing statistics and stores them persistently in EEPROM.
 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Quick Start](#quick-start)
 - [Installation](#installation)
 - [Configuration](#configuration)
-- [Core API](#core-api)
-- [Statistics API](#statistics-api)
-- [Query API](#query-api)
-- [Debug & Maintenance](#debug--maintenance)
-- [OLED Integration](#oled-integration)
-- [Data Structures](#data-structures)
-- [Examples](#examples)
+- [Public API Reference](#public-api-reference)
+- [Optional Features](#optional-features)
+- [Integration Examples](#integration-examples)
+- [Migration Guide](#migration-guide)
 - [Memory Usage](#memory-usage)
 
 ## Overview
@@ -30,6 +28,47 @@ This module tracks comprehensive typing statistics including:
 - **Advanced metrics**: Typing entropy, efficiency analysis
 
 All data is automatically saved to EEPROM with configurable intervals and CRC protection.
+
+### Version 2.0 Improvements
+
+- **Clean Public API**: Clear separation between public and internal APIs
+- **Modular Design**: Optional features are cleanly separated into packages
+- **Better Documentation**: Comprehensive API documentation with usage examples
+- **Backward Compatibility**: Existing code continues to work with minimal changes
+- **Type Safety**: Improved type definitions and error handling
+
+## Quick Start
+
+```c
+#include "typing_stats_public.h"
+
+void keyboard_post_init_user(void) {
+    ts_init();
+}
+
+void matrix_scan_user(void) {
+    ts_task_10ms();
+}
+
+bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+    ts_on_keyevent(record, keycode);
+    return true;
+}
+
+layer_state_t layer_state_set_user(layer_state_t state) {
+    return ts_on_layer_change(state);
+}
+
+void eeconfig_init_user(void) {
+    ts_eeconfig_init_user();
+}
+
+// Get statistics
+ts_summary_t summary;
+if (ts_get_summary(&summary)) {
+    printf("WPM: %d, Total: %lu\n", summary.current_wpm, summary.total_lifetime_presses);
+}
+```
 
 ## Installation
 
@@ -105,9 +144,11 @@ Add to your `config.h` to customize behavior:
 #define TS_ENABLE_BIGRAM_STATS 1 // Track common key combinations
 ```
 
-## Core API
+## Public API Reference
 
-### Initialization Functions
+The typing statistics module provides a clean, well-documented public API through `typing_stats_public.h`. All functions are prefixed with `ts_` and provide comprehensive error checking.
+
+### System Management
 
 #### `void ts_init(void)`
 Initialize the typing statistics module. Must be called once during keyboard startup.
@@ -171,88 +212,345 @@ layer_state_t layer_state_set_user(layer_state_t state) {
 }
 ```
 
-## Statistics API
+### Statistics Query API
 
-### Basic Statistics
-
-#### `uint16_t ts_get_current_wpm(void)`
-Get current words-per-minute reading.
-
-**Returns:** Current WPM (0-65535)
-
-#### `uint16_t ts_get_avg_wpm(void)`
-Get exponential moving average of WPM over time.
-
-**Returns:** Average WPM (0-65535)
-
-#### `uint16_t ts_get_max_wpm(void)`
-Get lifetime maximum WPM achieved.
-
-**Returns:** Maximum WPM (0-65535)
-
-#### `uint32_t ts_get_total_presses(void)`
-Get total lifetime key presses.
-
-**Returns:** Total key press count
-
-#### `uint32_t ts_get_session_presses(void)`
-Get key presses in current session.
-
-**Returns:** Session key press count
-
-#### `uint16_t ts_get_session_max_wpm(void)`
-Get maximum WPM achieved in current session.
-
-**Returns:** Session maximum WPM
-
-#### `uint32_t ts_get_session_time_minutes(void)`
-Get duration of current session in minutes.
-
-**Returns:** Session duration in minutes
-
-### Hand Balance Analysis
-
-#### `float ts_get_left_hand_ratio(void)`
-Get percentage of key presses from left hand.
-
-**Returns:** Left hand ratio (0.0-1.0)
-
-#### `float ts_get_right_hand_ratio(void)`
-Get percentage of key presses from right hand.
-
-**Returns:** Right hand ratio (0.0-1.0)
-
-#### `ts_hand_t ts_pos_to_hand(uint8_t row, uint8_t col)`
-Determine which hand a key position belongs to.
-
-**Parameters:**
-- `row`: Matrix row
-- `col`: Matrix column
-
-**Returns:** `TS_HAND_LEFT`, `TS_HAND_RIGHT`, or `TS_HAND_UNKNOWN`
-
-### Session Management
-
-#### `void ts_start_new_session(void)`
-Reset session statistics while preserving lifetime data.
-
-**Usage:**
-```c
-// Start fresh session tracking
-ts_start_new_session();
-```
-
-#### `void ts_get_summary(ts_summary_t *summary)`
+#### `bool ts_get_summary(ts_summary_t *summary)`
 Get comprehensive statistics summary in a single call.
 
 **Parameters:**
-- `summary`: Pointer to summary structure to fill
+- `summary`: Pointer to summary structure to populate
+
+**Returns:** `true` if successful, `false` if module not initialized
 
 **Usage:**
 ```c
 ts_summary_t summary;
-ts_get_summary(&summary);
-printf("Total keys: %lu, WPM: %u\n", summary.total_lifetime_presses, summary.current_wpm);
+if (ts_get_summary(&summary)) {
+    printf("WPM: %d, Total: %lu, Left: %.1f%%\n",
+           summary.current_wpm,
+           summary.total_lifetime_presses,
+           summary.left_hand_ratio * 100.0f);
+}
+```
+
+#### Individual Statistics Functions
+
+```c
+uint16_t ts_get_current_wpm(void);        // Current WPM reading
+uint16_t ts_get_avg_wpm(void);             // Average WPM (EMA)
+uint16_t ts_get_max_wpm(void);             // Lifetime maximum WPM
+uint16_t ts_get_session_max_wpm(void);     // Session maximum WPM
+uint32_t ts_get_total_presses(void);       // Total lifetime presses
+uint32_t ts_get_session_presses(void);     // Session presses
+uint32_t ts_get_session_time_minutes(void); // Session duration
+float    ts_get_left_hand_ratio(void);     // Left hand usage (0.0-1.0)
+float    ts_get_right_hand_ratio(void);    // Right hand usage (0.0-1.0)
+```
+
+### Position Analysis API
+
+#### `uint32_t ts_get_key_presses(uint8_t row, uint8_t col)`
+Get press count for a specific key position.
+
+**Usage:**
+```c
+uint32_t presses = ts_get_key_presses(2, 5);  // Get presses for row 2, col 5
+```
+
+#### `bool ts_find_most_used_key(uint8_t *row_out, uint8_t *col_out, uint32_t *count_out)`
+Find the most frequently pressed key.
+
+**Usage:**
+```c
+uint8_t row, col;
+uint32_t count;
+if (ts_find_most_used_key(&row, &col, &count)) {
+    printf("Most used key: (%d,%d) with %lu presses\n", row, col, count);
+}
+```
+
+### Layer Analysis API
+
+#### `uint32_t ts_get_layer_presses(uint8_t layer)`
+Get press count for a specific layer.
+
+#### `bool ts_find_most_used_layer(uint8_t *layer_out, uint32_t *count_out)`
+Find the most frequently used layer.
+
+### Modifier Analysis API
+
+#### `uint32_t ts_get_modifier_presses(uint8_t mod_index)`
+Get press count for a specific modifier (0=LCtrl, 1=LShift, etc.).
+
+#### `const char* ts_get_modifier_name(uint8_t mod_index)`
+Get human-readable name for a modifier index.
+
+### Session Management API
+
+#### `void ts_start_new_session(void)`
+Start a new typing session while preserving lifetime statistics.
+
+**Usage:**
+```c
+ts_start_new_session();  // Reset session stats, keep lifetime data
+```
+
+**Example - Manual Session Control:**
+```c
+// In your keymap.c
+bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+    ts_on_keyevent(record, keycode);
+
+    if (record->event.pressed) {
+        switch (keycode) {
+            case KC_F24:  // Custom key to start new session
+                ts_start_new_session();
+                return false;
+        }
+    }
+    return true;
+}
+```
+
+**What gets reset:**
+- Session key presses → 0
+- Session start time → current time
+- Session maximum WPM → 0 (if WPM tracking enabled)
+
+**What gets preserved:**
+- Total lifetime presses
+- Lifetime maximum WPM
+- Average WPM (EMA)
+- All key position statistics
+- All layer and modifier statistics
+
+#### `void ts_reset_all_stats(void)`
+Reset all statistics to defaults. This action cannot be undone.
+
+**Usage:**
+```c
+ts_reset_all_stats();  // Clear ALL data including lifetime stats
+```
+
+#### Automatic Session Management
+
+By default, a new session starts automatically on each keyboard boot:
+
+```c
+#define TS_AUTO_NEW_SESSION_ON_BOOT 1  // Default: enabled
+```
+
+**When enabled (default):**
+- New session starts every time the keyboard boots
+- Lifetime statistics are preserved across reboots
+- Session statistics reset to 0 on each boot
+
+**When disabled:**
+- Sessions continue across reboots
+- Only starts new session on first-ever boot
+- Use `ts_start_new_session()` for manual control
+
+## Optional Features
+
+The module includes several optional feature packages that can be enabled via configuration flags.
+
+### Bigram Analysis (TS_ENABLE_BIGRAM_STATS)
+
+Tracks common key sequences (bigrams) for typing pattern analysis.
+
+```c
+#define TS_ENABLE_BIGRAM_STATS 1
+```
+
+**API Functions:**
+```c
+bool ts_find_most_common_bigram(uint8_t *pos1_out, uint8_t *pos2_out, uint16_t *count_out);
+void ts_get_top_bigrams(ts_bigram_t *output, uint8_t max_count, uint8_t *actual_count);
+void ts_reset_bigram_stats(void);
+```
+
+### WPM Tracking (TS_ENABLE_WPM_TRACKING)
+
+Enables words-per-minute tracking and analysis. Includes current, average, and maximum WPM statistics.
+
+```c
+#define TS_ENABLE_WPM_TRACKING 1  // Default: enabled
+```
+
+**API Functions:**
+```c
+uint16_t ts_get_current_wpm(void);        // Current WPM reading
+uint16_t ts_get_avg_wpm(void);             // Average WPM (exponential moving average)
+uint16_t ts_get_max_wpm(void);             // Lifetime maximum WPM
+uint16_t ts_get_session_max_wpm(void);     // Session maximum WPM
+```
+
+### Layer Time Tracking (TS_ENABLE_LAYER_TIME)
+
+Tracks time spent on each layer in addition to key press counts.
+
+```c
+#define TS_ENABLE_LAYER_TIME 1
+```
+
+**API Functions:**
+```c
+uint32_t ts_get_layer_time_ms(uint8_t layer);     // Time in milliseconds
+float ts_get_layer_time_ratio(uint8_t layer);     // Ratio of total time (0.0-1.0)
+```
+
+### EEPROM Storage (TS_ENABLE_EEPROM_STORAGE)
+
+Enables persistent storage of statistics to EEPROM. When disabled, the module operates in memory-only mode.
+
+```c
+#define TS_ENABLE_EEPROM_STORAGE 1  // Default: enabled
+```
+
+**Memory-only mode benefits:**
+- Reduced EEPROM wear
+- Faster operation (no storage overhead)
+- Suitable for temporary analysis or testing
+- Statistics reset on each power cycle
+
+### Advanced Analysis (TS_ENABLE_ADVANCED_ANALYSIS)
+
+Provides advanced typing pattern analysis functions.
+
+```c
+#define TS_ENABLE_ADVANCED_ANALYSIS 1
+```
+
+**API Functions:**
+```c
+float ts_calculate_key_entropy(void);              // Key usage entropy
+uint32_t ts_get_same_finger_presses(void);         // Same-finger sequences
+uint32_t ts_get_finger_rolls(void);                // Finger roll sequences
+float ts_calculate_hand_balance_score(void);       // Hand balance score (0.0-1.0)
+float ts_calculate_finger_balance_score(void);     // Finger balance score
+uint32_t ts_count_alternating_hands(void);         // Alternating hand sequences
+float ts_calculate_typing_rhythm_variance(void);   // Rhythm consistency
+```
+
+## Integration Examples
+
+### Basic OLED Display Integration
+
+```c
+#include "typing_stats_public.h"
+
+void render_typing_stats(void) {
+    ts_summary_t summary;
+    if (!ts_get_summary(&summary)) return;
+
+    oled_write_P(PSTR("Typing Stats:\n"), false);
+
+    // Current session
+    char buffer[32];
+    snprintf(buffer, sizeof(buffer), "WPM: %d\n", summary.current_wpm);
+    oled_write(buffer, false);
+
+    snprintf(buffer, sizeof(buffer), "Session: %lu\n", summary.session_presses);
+    oled_write(buffer, false);
+
+    // Lifetime stats
+    snprintf(buffer, sizeof(buffer), "Total: %lu\n", summary.total_lifetime_presses);
+    oled_write(buffer, false);
+
+    snprintf(buffer, sizeof(buffer), "Max WPM: %d\n", summary.max_wpm);
+    oled_write(buffer, false);
+
+    // Hand balance
+    snprintf(buffer, sizeof(buffer), "L/R: %.1f%%\n", summary.left_hand_ratio * 100.0f);
+    oled_write(buffer, false);
+}
+```
+
+### Advanced Analysis Example
+
+```c
+#if TS_ENABLE_ADVANCED_ANALYSIS
+void show_advanced_stats(void) {
+    float entropy = ts_calculate_key_entropy();
+    float balance = ts_calculate_hand_balance_score();
+    uint32_t same_finger = ts_get_same_finger_presses();
+    uint32_t rolls = ts_get_finger_rolls();
+
+    printf("Advanced Analysis:\n");
+    printf("  Key Entropy: %.2f\n", entropy);
+    printf("  Hand Balance: %.1f%%\n", balance * 100.0f);
+    printf("  Same Finger: %lu\n", same_finger);
+    printf("  Finger Rolls: %lu\n", rolls);
+}
+#endif
+```
+
+### Layer Usage Analysis
+
+```c
+void analyze_layer_usage(void) {
+    printf("Layer Usage:\n");
+
+    for (uint8_t layer = 0; layer < 4; layer++) {
+        uint32_t presses = ts_get_layer_presses(layer);
+        if (presses > 0) {
+            printf("  Layer %d: %lu presses", layer, presses);
+
+#if TS_ENABLE_LAYER_TIME
+            uint32_t time_ms = ts_get_layer_time_ms(layer);
+            float ratio = ts_get_layer_time_ratio(layer);
+            printf(" (%.1fs, %.1f%%)", time_ms / 1000.0f, ratio * 100.0f);
+#endif
+            printf("\n");
+        }
+    }
+}
+```
+
+## Migration Guide
+
+### Migrating from v1.x to v2.0
+
+Version 2.0 introduces a cleaner API structure while maintaining backward compatibility.
+
+#### Header Changes
+
+**Old (v1.x):**
+```c
+#include "typing_stats.h"  // Included everything
+```
+
+**New (v2.0):**
+```c
+#include "typing_stats_public.h"  // Clean public API
+// OR for backward compatibility:
+#include "typing_stats.h"         // Still works
+```
+
+#### Function Changes
+
+Most functions remain the same, but some have been renamed for consistency:
+
+| Old Function | New Function | Notes |
+|--------------|--------------|-------|
+| `ts_get_summary()` | `ts_get_summary()` | Now returns bool for error checking |
+| `ts_start_new_session()` | `ts_reset_all_stats()` | More descriptive name |
+| Direct core access | Use public API | Internal functions are now private |
+
+#### New Features in v2.0
+
+- **Error Handling**: Functions now return success/failure status
+- **Type Safety**: Better type definitions and parameter validation
+- **Modular Design**: Optional features are clearly separated
+- **Documentation**: Comprehensive API documentation
+
+#### Recommended Migration Steps
+
+1. **Update includes**: Change to `typing_stats_public.h`
+2. **Add error checking**: Check return values of new functions
+3. **Update function calls**: Use new function names where applicable
+4. **Enable features**: Explicitly enable optional features you need
+5. **Test thoroughly**: Verify statistics are tracked correctly
 ```
 
 ## Query API

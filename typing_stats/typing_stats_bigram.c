@@ -1,8 +1,6 @@
 #include "typing_stats_bigram.h"
 
 #if TS_ENABLE_BIGRAM_STATS
-
-#include "typing_stats_core.h"
 #include <string.h>
 
 // Keep last key position (16-bit for full matrix index)

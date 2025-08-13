@@ -1,6 +1,4 @@
 #include "typing_stats_storage.h"
-#include "typing_stats_core.h"
-#include "typing_stats_core_internal.h"
 #include "eeprom.h"
 #include "eeconfig.h"
 #include "timer.h"

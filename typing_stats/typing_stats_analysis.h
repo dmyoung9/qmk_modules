@@ -1,6 +1,16 @@
 #pragma once
 
-#include "typing_stats_core.h"
+/**
+ * @file typing_stats_analysis.h
+ * @brief Advanced Analysis Package - Internal API
+ *
+ * This package provides advanced typing pattern analysis functions.
+ * External code should use the functions exposed in typing_stats_public.h
+ *
+ * @warning This is an internal header - do not include directly
+ */
+
+#include "typing_stats_private.h"
 
 // Advanced analysis functions
 float ts_analysis_calculate_key_entropy(void);
