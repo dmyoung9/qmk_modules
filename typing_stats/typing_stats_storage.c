@@ -1,8 +1,11 @@
 #include "typing_stats_storage.h"
-#include "eeprom.h"
 #include "eeconfig.h"
+#include "eeprom.h"
 #include "timer.h"
 #include <string.h>
+
+// EEPROM address for typing stats data (use a safe offset in user space)
+#define TS_EEPROM_ADDR 0x200
 
 // Internal state
 static bool g_dirty = false;
@@ -17,7 +20,7 @@ void ts_storage_load(ts_blob_t *blob) {
     if (!blob) return;
 
     // Read entire blob from EEPROM user data
-    eeconfig_read_user_datablock(blob, 0, sizeof(*blob));
+    eeprom_read_block(blob, (void*)TS_EEPROM_ADDR, sizeof(*blob));
 
     // Validate magic and version
     bool valid = (blob->magic == TS_MAGIC && blob->version == TS_VERSION);
@@ -51,7 +54,7 @@ void ts_storage_save(const ts_blob_t *blob) {
     temp_blob.crc32 = crc;
 
     // Write to EEPROM
-    eeconfig_update_user_datablock(&temp_blob, 0, sizeof(temp_blob));
+    eeprom_update_block(&temp_blob, (void*)TS_EEPROM_ADDR, sizeof(temp_blob));
 
     // Update internal state
     g_dirty = false;
