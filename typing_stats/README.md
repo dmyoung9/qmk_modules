@@ -252,7 +252,7 @@ Get comprehensive statistics summary in a single call.
 ```c
 ts_summary_t summary;
 ts_get_summary(&summary);
-printf("Total keys: %lu, WPM: %u\n", summary.total_lifetime_presses, summary.current_wmp);
+printf("Total keys: %lu, WPM: %u\n", summary.total_lifetime_presses, summary.current_wpm);
 ```
 
 ## Query API
@@ -548,7 +548,7 @@ uint16_t avg_wpm = ts_get_avg_wpm();
 uint32_t total_keys = ts_get_total_presses();
 
 printf("WPM: %u (avg: %u), Total keys: %lu\n", 
-       current_wmp, avg_wpm, total_keys);
+       current_wpm, avg_wpm, total_keys);
 ```
 
 ### Find Problem Areas
