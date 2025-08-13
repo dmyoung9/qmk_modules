@@ -1,7 +1,7 @@
 /**
  * @file typing_stats_api.c
  * @brief Public API implementation for typing statistics module
- * 
+ *
  * This file implements the public API functions defined in typing_stats_public.h
  * by wrapping the internal implementation with a clean, stable interface.
  */
@@ -78,41 +78,41 @@ bool ts_get_summary(ts_summary_t *summary) {
     if (!summary || !ts_core_is_initialized()) {
         return false;
     }
-    
+
     ts_analysis_get_summary(summary);
     return true;
 }
 
 #if TS_ENABLE_WPM_TRACKING
 uint16_t ts_get_current_wpm(void) {
-    if (!ts_core_is_initialized()) return 0;
+    if (!ts_is_initialized()) return 0;
     return ts_wpm_get_current();
 }
 
 uint16_t ts_get_avg_wpm(void) {
-    if (!ts_core_is_initialized()) return 0;
+    if (!ts_is_initialized()) return 0;
     return ts_wpm_get_avg();
 }
 
 uint16_t ts_get_max_wpm(void) {
-    if (!ts_core_is_initialized()) return 0;
+    if (!ts_is_initialized()) return 0;
     return ts_wpm_get_max();
 }
 
 uint16_t ts_get_session_max_wpm(void) {
-    if (!ts_core_is_initialized()) return 0;
+    if (!ts_is_initialized()) return 0;
     return ts_wpm_get_session_max();
 }
 #endif
 
 uint32_t ts_get_total_presses(void) {
-    if (!ts_core_is_initialized()) return 0;
+    if (!ts_is_initialized()) return 0;
     ts_counters_t *counters = ts_core_get_counters();
     return counters->total_presses;
 }
 
 uint32_t ts_get_session_presses(void) {
-    if (!ts_core_is_initialized()) return 0;
+    if (!ts_is_initialized()) return 0;
     ts_counters_t *counters = ts_core_get_counters();
     return counters->session_presses;
 }
@@ -120,11 +120,11 @@ uint32_t ts_get_session_presses(void) {
 // Note: ts_get_session_time_minutes is implemented in core for backward compatibility
 
 float ts_get_left_hand_ratio(void) {
-    if (!ts_core_is_initialized()) return 0.0f;
-    
+    if (!ts_is_initialized()) return 0.0f;
+
     ts_counters_t *counters = ts_core_get_counters();
     uint32_t total = counters->left_hand_presses + counters->right_hand_presses;
-    
+
     if (total == 0) return 0.0f;
     return (float)counters->left_hand_presses / (float)total;
 }
@@ -144,18 +144,18 @@ uint32_t ts_get_key_presses(uint8_t row, uint8_t col) {
 bool ts_find_most_used_key(uint8_t *row_out, uint8_t *col_out, uint32_t *count_out) {
     uint16_t index;
     uint32_t count;
-    
+
     if (!ts_pos_find_most_used(&index, &count)) {
         return false;
     }
-    
+
     if (row_out || col_out) {
         uint8_t row, col;
         ts_index_to_pos(index, &row, &col);
         if (row_out) *row_out = row;
         if (col_out) *col_out = col;
     }
-    
+
     if (count_out) *count_out = count;
     return true;
 }
@@ -178,11 +178,11 @@ uint32_t ts_get_layer_presses(uint8_t layer) {
 bool ts_find_most_used_layer(uint8_t *layer_out, uint32_t *count_out) {
     uint8_t layer;
     uint32_t count;
-    
+
     if (ts_layer_find_most_used(&layer, &count) <= 0) {
         return false;
     }
-    
+
     if (layer_out) *layer_out = layer;
     if (count_out) *count_out = count;
     return true;
@@ -209,11 +209,11 @@ uint32_t ts_get_modifier_presses(uint8_t mod_index) {
 bool ts_find_most_used_modifier(uint8_t *mod_out, uint32_t *count_out) {
     uint8_t mod;
     uint32_t count;
-    
+
     if (ts_mod_find_most_used(&mod, &count) <= 0) {
         return false;
     }
-    
+
     if (mod_out) *mod_out = mod;
     if (count_out) *count_out = count;
     return true;
