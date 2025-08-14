@@ -1,0 +1,8 @@
+{
+    "module_name": "wpm_stats",
+    "maintainer": "dmyoung9",
+    "license": "GPL-2.0-or-later",
+    "features": {
+        "wpm": true
+    }
+}
