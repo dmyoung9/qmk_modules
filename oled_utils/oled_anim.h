@@ -330,3 +330,307 @@ void toggle_anim_set(toggle_anim_t *w, bool want_on, uint32_t now);
  * @param now Current timestamp from timer_read32()
  */
 void toggle_anim_render(toggle_anim_t *w, uint32_t now);
+
+// ============================================================================
+// One-Shot Animation Controllers
+// ============================================================================
+
+/**
+ * @brief One-shot animation phases
+ *
+ * Manages animations that run once and return to idle state.
+ * Supports boot animations and triggered one-shots.
+ */
+typedef enum {
+    ONESHOT_IDLE = 0,       ///< Idle state (showing steady frame)
+    ONESHOT_BOOT,           ///< Boot animation in progress
+    ONESHOT_TRIGGERED       ///< Triggered animation in progress
+} oneshot_phase_t;
+
+/**
+ * @brief One-shot animation controller
+ *
+ * Manages animations that run once and return to idle state.
+ * Perfect for boot animations and event-triggered effects like layer changes.
+ *
+ * Features:
+ * - Boot animation that runs once on initialization
+ * - Triggered animations that can be started by external events
+ * - Automatic return to idle state after completion
+ * - Configurable steady frame (first or last frame of sequence)
+ */
+typedef struct {
+    // Configuration
+    const slice_seq_t *seq;     ///< Animation sequence
+    uint8_t x, y;               ///< Drawing position
+    bool steady_at_end;         ///< true=steady is last frame, false=steady is first frame
+
+    // Runtime state
+    animator_t      anim;       ///< Low-level animator instance
+    oneshot_phase_t phase;      ///< Current animation phase
+    bool            boot_done;  ///< Whether boot animation has completed
+} oneshot_anim_t;
+
+/**
+ * @brief Initialize one-shot animation controller
+ *
+ * Sets up the controller and optionally starts the boot animation.
+ * If run_boot_anim is true, the animation will start immediately.
+ *
+ * @param w One-shot controller instance
+ * @param seq Animation sequence
+ * @param x X coordinate for drawing
+ * @param y Y coordinate for drawing
+ * @param steady_at_end true=steady frame is last frame, false=steady frame is first frame
+ * @param run_boot_anim true to start boot animation immediately, false to start idle
+ * @param now Current timestamp from timer_read32()
+ */
+void oneshot_anim_init(oneshot_anim_t *w, const slice_seq_t *seq,
+                       uint8_t x, uint8_t y, bool steady_at_end,
+                       bool run_boot_anim, uint32_t now);
+
+/**
+ * @brief Trigger a one-shot animation
+ *
+ * Starts the animation sequence if not already running. If a boot animation
+ * is in progress, this will be ignored. If already triggered, this resets
+ * the animation to the beginning.
+ *
+ * @param w One-shot controller instance
+ * @param now Current timestamp from timer_read32()
+ */
+void oneshot_anim_trigger(oneshot_anim_t *w, uint32_t now);
+
+/**
+ * @brief Advance and render the one-shot controller
+ *
+ * Call this every OLED tick to update animations and draw current frame.
+ * Handles all phases and automatically returns to idle when complete.
+ *
+ * @param w One-shot controller instance
+ * @param now Current timestamp from timer_read32()
+ * @return true if animation just completed this frame, false otherwise
+ */
+bool oneshot_anim_render(oneshot_anim_t *w, uint32_t now);
+
+/**
+ * @brief Check if one-shot animation is currently running
+ *
+ * @param w One-shot controller instance
+ * @return true if animation is running, false if idle
+ */
+static inline bool oneshot_anim_is_running(const oneshot_anim_t *w) {
+    return w->phase != ONESHOT_IDLE;
+}
+
+/**
+ * @brief Check if boot animation has completed
+ *
+ * @param w One-shot controller instance
+ * @return true if boot animation has finished, false otherwise
+ */
+static inline bool oneshot_anim_boot_done(const oneshot_anim_t *w) {
+    return w->boot_done;
+}
+
+// ============================================================================
+// Out-and-Back Animation Controllers
+// ============================================================================
+
+/**
+ * @brief Out-and-back animation phases
+ *
+ * Manages animations that go "out" (forward) and then "back" (reverse) to idle.
+ * Perfect for layer change indicators and other event-triggered effects.
+ */
+typedef enum {
+    OUTBACK_IDLE = 0,       ///< Idle state (showing steady frame)
+    OUTBACK_BOOT,           ///< Boot animation in progress (forward only)
+    OUTBACK_OUT,            ///< Going "out" (forward animation)
+    OUTBACK_BACK            ///< Coming "back" (reverse animation)
+} outback_phase_t;
+
+/**
+ * @brief Out-and-back animation controller
+ *
+ * Manages animations that run forward then reverse back to idle.
+ * Perfect for boot animations and layer change effects.
+ *
+ * Features:
+ * - Boot animation that runs once forward on initialization
+ * - Triggered "out and back" animations (forward then reverse)
+ * - Automatic return to idle state after completion
+ * - Configurable steady frame (first or last frame of sequence)
+ */
+typedef struct {
+    // Configuration
+    const slice_seq_t *seq;     ///< Animation sequence
+    uint8_t x, y;               ///< Drawing position
+    bool steady_at_end;         ///< true=steady is last frame, false=steady is first frame
+
+    // Runtime state
+    animator_t       anim;      ///< Low-level animator instance
+    outback_phase_t  phase;     ///< Current animation phase
+    bool             boot_done; ///< Whether boot animation has completed
+} outback_anim_t;
+
+/**
+ * @brief Initialize out-and-back animation controller
+ *
+ * Sets up the controller and optionally starts the boot animation.
+ * If run_boot_anim is true, the animation will start immediately.
+ *
+ * @param w Out-and-back controller instance
+ * @param seq Animation sequence
+ * @param x X coordinate for drawing
+ * @param y Y coordinate for drawing
+ * @param steady_at_end true=steady frame is last frame, false=steady frame is first frame
+ * @param run_boot_anim true to start boot animation immediately, false to start idle
+ * @param now Current timestamp from timer_read32()
+ */
+void outback_anim_init(outback_anim_t *w, const slice_seq_t *seq,
+                       uint8_t x, uint8_t y, bool steady_at_end,
+                       bool run_boot_anim, uint32_t now);
+
+/**
+ * @brief Trigger an out-and-back animation
+ *
+ * Starts the "out and back" sequence if not already running. If a boot animation
+ * is in progress, this will be ignored. If already running, this resets to the beginning.
+ *
+ * @param w Out-and-back controller instance
+ * @param now Current timestamp from timer_read32()
+ */
+void outback_anim_trigger(outback_anim_t *w, uint32_t now);
+
+/**
+ * @brief Advance and render the out-and-back controller
+ *
+ * Call this every OLED tick to update animations and draw current frame.
+ * Handles all phases and automatically returns to idle when complete.
+ *
+ * @param w Out-and-back controller instance
+ * @param now Current timestamp from timer_read32()
+ * @return true if animation just completed this frame, false otherwise
+ */
+bool outback_anim_render(outback_anim_t *w, uint32_t now);
+
+/**
+ * @brief Check if out-and-back animation is currently running
+ *
+ * @param w Out-and-back controller instance
+ * @return true if animation is running, false if idle
+ */
+static inline bool outback_anim_is_running(const outback_anim_t *w) {
+    return w->phase != OUTBACK_IDLE;
+}
+
+/**
+ * @brief Check if boot animation has completed
+ *
+ * @param w Out-and-back controller instance
+ * @return true if boot animation has finished, false otherwise
+ */
+static inline bool outback_anim_boot_done(const outback_anim_t *w) {
+    return w->boot_done;
+}
+
+// ============================================================================
+// Boot-Then-Reverse-Out-Back Animation Controllers
+// ============================================================================
+
+/**
+ * @brief Boot-then-reverse-out-back animation phases
+ *
+ * Specialized controller for animations that:
+ * 1. Boot: 0→end, stay at end
+ * 2. Triggered: end→start→end (reverse out, then forward back)
+ */
+typedef enum {
+    BOOTREV_IDLE = 0,       ///< Idle state (showing steady frame at end)
+    BOOTREV_BOOT,           ///< Boot animation in progress (0→end)
+    BOOTREV_OUT,            ///< Going "out" (end→start, reverse animation)
+    BOOTREV_BACK            ///< Coming "back" (start→end, forward animation)
+} bootrev_phase_t;
+
+/**
+ * @brief Boot-then-reverse-out-back animation controller
+ *
+ * Perfect for layer frame animations where:
+ * - Boot runs 0→4 and stays at frame 4
+ * - Layer changes trigger 4→0→4 animation
+ *
+ * Features:
+ * - Boot animation runs forward once (0→end)
+ * - Triggered animations go reverse then forward (end→start→end)
+ * - Steady state is always the last frame
+ */
+typedef struct {
+    // Configuration
+    const slice_seq_t *seq;     ///< Animation sequence
+    uint8_t x, y;               ///< Drawing position
+
+    // Runtime state
+    animator_t       anim;      ///< Low-level animator instance
+    bootrev_phase_t  phase;     ///< Current animation phase
+    bool             boot_done; ///< Whether boot animation has completed
+} bootrev_anim_t;
+
+/**
+ * @brief Initialize boot-then-reverse-out-back animation controller
+ *
+ * Sets up the controller and optionally starts the boot animation.
+ * Steady state is always the last frame of the sequence.
+ *
+ * @param w Boot-reverse controller instance
+ * @param seq Animation sequence
+ * @param x X coordinate for drawing
+ * @param y Y coordinate for drawing
+ * @param run_boot_anim true to start boot animation immediately, false to start idle
+ * @param now Current timestamp from timer_read32()
+ */
+void bootrev_anim_init(bootrev_anim_t *w, const slice_seq_t *seq,
+                       uint8_t x, uint8_t y, bool run_boot_anim, uint32_t now);
+
+/**
+ * @brief Trigger a reverse-out-back animation
+ *
+ * Starts the end→start→end sequence if not already running. If a boot animation
+ * is in progress, this will be ignored. If already running, this resets to the beginning.
+ *
+ * @param w Boot-reverse controller instance
+ * @param now Current timestamp from timer_read32()
+ */
+void bootrev_anim_trigger(bootrev_anim_t *w, uint32_t now);
+
+/**
+ * @brief Advance and render the boot-reverse controller
+ *
+ * Call this every OLED tick to update animations and draw current frame.
+ * Handles all phases and automatically returns to idle when complete.
+ *
+ * @param w Boot-reverse controller instance
+ * @param now Current timestamp from timer_read32()
+ * @return true if animation just completed this frame, false otherwise
+ */
+bool bootrev_anim_render(bootrev_anim_t *w, uint32_t now);
+
+/**
+ * @brief Check if boot-reverse animation is currently running
+ *
+ * @param w Boot-reverse controller instance
+ * @return true if animation is running, false if idle
+ */
+static inline bool bootrev_anim_is_running(const bootrev_anim_t *w) {
+    return w->phase != BOOTREV_IDLE;
+}
+
+/**
+ * @brief Check if boot animation has completed
+ *
+ * @param w Boot-reverse controller instance
+ * @return true if boot animation has finished, false otherwise
+ */
+static inline bool bootrev_anim_boot_done(const bootrev_anim_t *w) {
+    return w->boot_done;
+}

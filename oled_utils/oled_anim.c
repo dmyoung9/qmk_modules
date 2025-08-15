@@ -347,3 +347,272 @@ void toggle_anim_render(toggle_anim_t *w, uint32_t now) {
     }
 }
 
+// ============================================================================
+// One-Shot Animation Controller Implementation
+// ============================================================================
+
+/**
+ * @brief Draw the steady frame for one-shot animation
+ * @param w One-shot controller instance
+ */
+static inline void oneshot_draw_steady(const oneshot_anim_t *w) {
+    if (!w->seq || !w->seq->count) return;
+
+    const slice_t *steady = w->steady_at_end
+        ? &w->seq->frames[w->seq->count - 1]  // Last frame
+        : &w->seq->frames[0];                 // First frame
+
+    clear_rect(w->x, w->y, steady->width, (uint8_t)(steady->pages * 8));
+    draw_slice_px(steady, w->x, w->y);
+}
+
+void oneshot_anim_init(oneshot_anim_t *w, const slice_seq_t *seq,
+                       uint8_t x, uint8_t y, bool steady_at_end,
+                       bool run_boot_anim, uint32_t now) {
+    w->seq = seq;
+    w->x = x;
+    w->y = y;
+    w->steady_at_end = steady_at_end;
+    w->boot_done = false;
+    w->anim.active = false;
+
+    if (run_boot_anim && seq && seq->count) {
+        // Start boot animation
+        animator_start(&w->anim, seq, /*forward=*/true, now);
+        w->phase = ONESHOT_BOOT;
+    } else {
+        // Start idle
+        w->phase = ONESHOT_IDLE;
+        w->boot_done = true;  // Mark boot as done if we're not running it
+        oneshot_draw_steady(w);
+    }
+}
+
+void oneshot_anim_trigger(oneshot_anim_t *w, uint32_t now) {
+    // Only trigger if boot is done and we're not already running
+    if (!w->boot_done || !w->seq || !w->seq->count) return;
+
+    // Start triggered animation
+    animator_start(&w->anim, w->seq, /*forward=*/true, now);
+    w->phase = ONESHOT_TRIGGERED;
+}
+
+bool oneshot_anim_render(oneshot_anim_t *w, uint32_t now) {
+    switch (w->phase) {
+        case ONESHOT_IDLE:
+            // Draw steady frame and stay idle
+            oneshot_draw_steady(w);
+            return false;
+
+        case ONESHOT_BOOT: {
+            anim_result_t r = animator_step_and_draw(&w->anim, w->x, w->y, now);
+            if (r == ANIM_DONE_AT_END) {
+                // Boot animation completed
+                w->phase = ONESHOT_IDLE;
+                w->boot_done = true;
+                oneshot_draw_steady(w);
+                return true;  // Animation just completed
+            }
+            return false;
+        }
+
+        case ONESHOT_TRIGGERED: {
+            anim_result_t r = animator_step_and_draw(&w->anim, w->x, w->y, now);
+            if (r == ANIM_DONE_AT_END) {
+                // Triggered animation completed
+                w->phase = ONESHOT_IDLE;
+                oneshot_draw_steady(w);
+                return true;  // Animation just completed
+            }
+            return false;
+        }
+    }
+
+    return false;
+}
+
+// ============================================================================
+// Out-and-Back Animation Controller Implementation
+// ============================================================================
+
+/**
+ * @brief Draw the steady frame for out-and-back animation
+ * @param w Out-and-back controller instance
+ */
+static inline void outback_draw_steady(const outback_anim_t *w) {
+    if (!w->seq || !w->seq->count) return;
+
+    const slice_t *steady = w->steady_at_end
+        ? &w->seq->frames[w->seq->count - 1]  // Last frame
+        : &w->seq->frames[0];                 // First frame
+
+    clear_rect(w->x, w->y, steady->width, (uint8_t)(steady->pages * 8));
+    draw_slice_px(steady, w->x, w->y);
+}
+
+void outback_anim_init(outback_anim_t *w, const slice_seq_t *seq,
+                       uint8_t x, uint8_t y, bool steady_at_end,
+                       bool run_boot_anim, uint32_t now) {
+    w->seq = seq;
+    w->x = x;
+    w->y = y;
+    w->steady_at_end = steady_at_end;
+    w->boot_done = false;
+    w->anim.active = false;
+
+    if (run_boot_anim && seq && seq->count) {
+        // Start boot animation (forward only)
+        animator_start(&w->anim, seq, /*forward=*/true, now);
+        w->phase = OUTBACK_BOOT;
+    } else {
+        // Start idle
+        w->phase = OUTBACK_IDLE;
+        w->boot_done = true;  // Mark boot as done if we're not running it
+        outback_draw_steady(w);
+    }
+}
+
+void outback_anim_trigger(outback_anim_t *w, uint32_t now) {
+    // Only trigger if boot is done and we're not already running
+    if (!w->boot_done || !w->seq || !w->seq->count) return;
+
+    // Start "out" phase (forward animation)
+    animator_start(&w->anim, w->seq, /*forward=*/true, now);
+    w->phase = OUTBACK_OUT;
+}
+
+bool outback_anim_render(outback_anim_t *w, uint32_t now) {
+    switch (w->phase) {
+        case OUTBACK_IDLE:
+            // Draw steady frame and stay idle
+            outback_draw_steady(w);
+            return false;
+
+        case OUTBACK_BOOT: {
+            anim_result_t r = animator_step_and_draw(&w->anim, w->x, w->y, now);
+            if (r == ANIM_DONE_AT_END) {
+                // Boot animation completed
+                w->phase = OUTBACK_IDLE;
+                w->boot_done = true;
+                outback_draw_steady(w);
+                return true;  // Animation just completed
+            }
+            return false;
+        }
+
+        case OUTBACK_OUT: {
+            anim_result_t r = animator_step_and_draw(&w->anim, w->x, w->y, now);
+            if (r == ANIM_DONE_AT_END) {
+                // "Out" phase completed, start "back" phase (reverse)
+                animator_start(&w->anim, w->seq, /*forward=*/false, now);
+                w->phase = OUTBACK_BACK;
+            }
+            return false;
+        }
+
+        case OUTBACK_BACK: {
+            anim_result_t r = animator_step_and_draw(&w->anim, w->x, w->y, now);
+            if (r == ANIM_DONE_AT_START) {
+                // "Back" phase completed, return to idle
+                w->phase = OUTBACK_IDLE;
+                outback_draw_steady(w);
+                return true;  // Animation just completed
+            }
+            return false;
+        }
+    }
+
+    return false;
+}
+
+// ============================================================================
+// Boot-Then-Reverse-Out-Back Animation Controller Implementation
+// ============================================================================
+
+/**
+ * @brief Draw the steady frame for boot-reverse animation (always last frame)
+ * @param w Boot-reverse controller instance
+ */
+static inline void bootrev_draw_steady(const bootrev_anim_t *w) {
+    if (!w->seq || !w->seq->count) return;
+
+    // Steady frame is always the last frame
+    const slice_t *steady = &w->seq->frames[w->seq->count - 1];
+
+    clear_rect(w->x, w->y, steady->width, (uint8_t)(steady->pages * 8));
+    draw_slice_px(steady, w->x, w->y);
+}
+
+void bootrev_anim_init(bootrev_anim_t *w, const slice_seq_t *seq,
+                       uint8_t x, uint8_t y, bool run_boot_anim, uint32_t now) {
+    w->seq = seq;
+    w->x = x;
+    w->y = y;
+    w->boot_done = false;
+    w->anim.active = false;
+
+    if (run_boot_anim && seq && seq->count) {
+        // Start boot animation (0→end)
+        animator_start(&w->anim, seq, /*forward=*/true, now);
+        w->phase = BOOTREV_BOOT;
+    } else {
+        // Start idle at last frame
+        w->phase = BOOTREV_IDLE;
+        w->boot_done = true;  // Mark boot as done if we're not running it
+        bootrev_draw_steady(w);
+    }
+}
+
+void bootrev_anim_trigger(bootrev_anim_t *w, uint32_t now) {
+    // Only trigger if boot is done and we're not already running
+    if (!w->boot_done || !w->seq || !w->seq->count) return;
+
+    // Start "out" phase (end→start, reverse animation)
+    animator_start(&w->anim, w->seq, /*forward=*/false, now);
+    w->phase = BOOTREV_OUT;
+}
+
+bool bootrev_anim_render(bootrev_anim_t *w, uint32_t now) {
+    switch (w->phase) {
+        case BOOTREV_IDLE:
+            // Draw steady frame (last frame) and stay idle
+            bootrev_draw_steady(w);
+            return false;
+
+        case BOOTREV_BOOT: {
+            anim_result_t r = animator_step_and_draw(&w->anim, w->x, w->y, now);
+            if (r == ANIM_DONE_AT_END) {
+                // Boot animation completed (reached last frame)
+                w->phase = BOOTREV_IDLE;
+                w->boot_done = true;
+                bootrev_draw_steady(w);
+                return true;  // Animation just completed
+            }
+            return false;
+        }
+
+        case BOOTREV_OUT: {
+            anim_result_t r = animator_step_and_draw(&w->anim, w->x, w->y, now);
+            if (r == ANIM_DONE_AT_START) {
+                // "Out" phase completed (reached first frame), start "back" phase (forward)
+                animator_start(&w->anim, w->seq, /*forward=*/true, now);
+                w->phase = BOOTREV_BACK;
+            }
+            return false;
+        }
+
+        case BOOTREV_BACK: {
+            anim_result_t r = animator_step_and_draw(&w->anim, w->x, w->y, now);
+            if (r == ANIM_DONE_AT_END) {
+                // "Back" phase completed (reached last frame), return to idle
+                w->phase = BOOTREV_IDLE;
+                bootrev_draw_steady(w);
+                return true;  // Animation just completed
+            }
+            return false;
+        }
+    }
+
+    return false;
+}
+
