@@ -333,13 +333,6 @@ bool wpm_stats_oled_render(void) {
         max_wpm = min_scale;
     }
 
-    // Clear the area above the bar for text
-    for (uint16_t y = 0; y < g_bar_config.y; y++) {
-        for (uint16_t x = 0; x < OLED_DISPLAY_WIDTH; x++) {
-            set_pixel(x, y, false);
-        }
-    }
-
     // Clear the inner area and draw border
     if (!clear_bar_inner() || !draw_bar_border()) {
         return false;
