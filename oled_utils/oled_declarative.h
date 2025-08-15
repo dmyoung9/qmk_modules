@@ -19,6 +19,30 @@
 #include "oled_anim.h"    // slice_seq_t, animator_t, anim_result_t, TR_* enums
 
 // ============================================================================
+// Watchdog Configuration
+// ============================================================================
+
+/**
+ * @brief Animation watchdog timeout in milliseconds
+ *
+ * If an animation is running for longer than this duration after a state change,
+ * it will be considered stuck and automatically reset. Set to 0 to disable watchdog.
+ */
+#ifndef WIDGET_WATCHDOG_TIMEOUT_MS
+#    define WIDGET_WATCHDOG_TIMEOUT_MS 1000
+#endif
+
+/**
+ * @brief Additional grace period before forcing reset
+ *
+ * After detecting a stuck animation, wait this additional time before forcing
+ * a reset to allow for natural completion.
+ */
+#ifndef WIDGET_WATCHDOG_GRACE_MS
+#    define WIDGET_WATCHDOG_GRACE_MS 500
+#endif
+
+// ============================================================================
 // Rendering Policies
 // ============================================================================
 
@@ -125,6 +149,11 @@ typedef struct {
     uint8_t src;                ///< Currently visible/committed state
     uint8_t dst;                ///< Target state for current transition
     uint8_t pending;            ///< Queued desired state (0xFF = none)
+
+    // Watchdog state
+    uint8_t last_query_result;  ///< Last result from query function
+    uint32_t last_state_change; ///< Timestamp of last state change
+    uint32_t stuck_timeout;     ///< Timestamp when stuck condition was detected (0 = not stuck)
 
     // Status
     bool initialized;           ///< Whether widget has been initialized

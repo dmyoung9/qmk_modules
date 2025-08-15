@@ -177,6 +177,21 @@ widget_tick(&layer_widget, timer_read32());
 #define ANIM_FRAME_MS 60  // Faster animations (default: 80ms)
 ```
 
+### Widget Watchdog
+The declarative widget system includes an automatic watchdog to detect and recover from stuck animations:
+
+```c
+// In your config.h
+#define WIDGET_WATCHDOG_TIMEOUT_MS 1000  // Timeout before considering animation stuck (default: 1000ms)
+#define WIDGET_WATCHDOG_GRACE_MS 500     // Grace period before forcing reset (default: 500ms)
+```
+
+Set `WIDGET_WATCHDOG_TIMEOUT_MS` to `0` to disable the watchdog entirely. The watchdog automatically:
+- Detects when animations run longer than expected after state changes
+- Provides a grace period for natural completion
+- Forces widgets back to idle state if stuck for too long
+- Prevents animations from getting permanently stuck during rapid state changes
+
 ### Memory Usage
 - Each `slice_t`: 4 bytes
 - Each `animator_t`: ~12 bytes

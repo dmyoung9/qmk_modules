@@ -152,7 +152,6 @@ static anim_result_t step_then_draw(widget_t *w, uint32_t now) {
 // --- Public API ---
 
 void widget_init(widget_t *w, const widget_config_t *cfg, uint8_t initial_state, uint32_t now) {
-    (void)now;
     w->cfg = cfg;
     w->anim.active = false;
     w->anim.count  = 0;
@@ -160,6 +159,9 @@ void widget_init(widget_t *w, const widget_config_t *cfg, uint8_t initial_state,
     w->src   = initial_state;
     w->dst   = initial_state;
     w->pending = 0xFF;
+    w->last_query_result = initial_state;
+    w->last_state_change = now;
+    w->stuck_timeout = 0;
     w->initialized = true;
 
     // If bbox not provided, you *can* compute a safe default from the steady frame,
@@ -174,7 +176,41 @@ void widget_tick(widget_t *w, uint32_t now) {
     uint8_t desired = w->cfg->query ? w->cfg->query(w->cfg->user_arg) : w->src;
     if (desired >= w->cfg->state_count) desired = w->src; // safety
 
-    // 2) Transition logic (reversible, identical to our earlier controller but generic)
+    // 2) Watchdog: detect state changes and stuck animations
+#if WIDGET_WATCHDOG_TIMEOUT_MS > 0
+    // Reset watchdog on state changes
+    if (desired != w->last_query_result) {
+        w->last_query_result = desired;
+        w->last_state_change = now;
+        w->stuck_timeout = 0;
+    }
+
+    // Detect stuck animations
+    if (w->phase != TR_IDLE && w->stuck_timeout == 0) {
+        uint32_t animation_duration = now - w->last_state_change;
+        if (animation_duration > WIDGET_WATCHDOG_TIMEOUT_MS) {
+            w->stuck_timeout = now;
+        }
+    }
+
+    // Force reset if stuck for too long
+    if (w->stuck_timeout != 0) {
+        uint32_t stuck_duration = now - w->stuck_timeout;
+        if (stuck_duration > WIDGET_WATCHDOG_GRACE_MS) {
+            // Force widget to idle state and redraw current state
+            w->phase = TR_IDLE;
+            w->src = desired;
+            w->dst = desired;
+            w->pending = 0xFF;
+            w->anim.active = false;
+            w->stuck_timeout = 0;
+            draw_state_steady(w, w->src);
+            return;
+        }
+    }
+#endif
+
+    // 3) Transition logic (reversible, identical to our earlier controller but generic)
     if (w->phase == TR_IDLE) {
         if (desired != w->src) {
             w->dst = desired;
