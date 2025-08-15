@@ -1,3 +1,15 @@
+/**
+ * @file oled_declarative.h
+ * @brief Fully declarative widget system for OLED animations
+ *
+ * This module provides:
+ * - Declarative widget configuration with states, conditions, and layout
+ * - Automatic state management and transition handling
+ * - Support for both exclusive (layer-like) and independent (modifier-like) widgets
+ * - Configurable rendering policies (opaque vs additive blending)
+ * - Fluent APIs for easy widget creation and management
+ */
+
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
@@ -6,71 +18,193 @@
 #include "oled_utils.h"   // slice_t, clear_rect, draw_slice_px
 #include "oled_anim.h"    // slice_seq_t, animator_t, anim_result_t, TR_* enums
 
-// Blend/clear policy (kept simple: OPAQUE clears the widget bbox every frame)
-typedef enum { BLIT_OPAQUE = 0, BLIT_ADDITIVE = 1 } blit_mode_t;
+// ============================================================================
+// Rendering Policies
+// ============================================================================
 
-// Direction for entering a given state.
-// enter_dir = +1 → enter plays forward (0..N-1), steady is last frame
-// enter_dir = -1 → enter plays backward (N-1..0), steady is first frame
+/**
+ * @brief Blending modes for widget rendering
+ *
+ * Controls how widgets handle background clearing and frame composition.
+ */
+typedef enum {
+    BLIT_OPAQUE = 0,    ///< Clear widget bbox before drawing each frame (no trails)
+    BLIT_ADDITIVE = 1   ///< OR-blend frames without clearing (allows overlays)
+} blit_mode_t;
+
+// ============================================================================
+// State Configuration
+// ============================================================================
+
+/**
+ * @brief Enter direction constants for state descriptions
+ *
+ * Controls which direction the animation plays when entering a state.
+ */
+#define ENTER_FWD  (+1)  ///< Enter plays forward (0→N-1), steady is last frame
+#define ENTER_REV  (-1)  ///< Enter plays backward (N-1→0), steady is first frame
+
+/**
+ * @brief State description for declarative widgets
+ *
+ * Defines how a widget state should be animated. Each state has its own
+ * animation sequence and enter direction. The same frames are used for
+ * both enter and exit, with direction determining the playback order.
+ */
 typedef struct {
-    const slice_seq_t *seq; // frames for this state (canonical order)
-    int8_t             enter_dir;
+    const slice_seq_t *seq;     ///< Animation frames for this state
+    int8_t             enter_dir; ///< Direction for entering: ENTER_FWD or ENTER_REV
 } state_desc_t;
 
-// Condition callback returns desired state index [0..state_count-1].
-// Pass whatever you need via user_arg (e.g., a modifier mask, etc.)
+/**
+ * @brief State query callback function
+ *
+ * Called by widgets to determine the desired state. Should return a state
+ * index in the range [0, state_count-1]. Use user_arg to pass context data.
+ *
+ * @param user_arg Context data passed from widget configuration
+ * @return Desired state index
+ */
 typedef uint8_t (*state_query_fn_t)(uint32_t user_arg);
 
-// Declarative widget config (works for both exclusive and binary/toggle widgets)
+// ============================================================================
+// Widget Configuration
+// ============================================================================
+
+/**
+ * @brief Declarative widget configuration
+ *
+ * Defines all aspects of a widget's behavior, appearance, and state management.
+ * Works for both exclusive widgets (like layer indicators) and independent
+ * widgets (like modifier indicators).
+ *
+ * The widget system automatically handles:
+ * - State transitions with smooth animations
+ * - Mid-flight reversal and cancellation
+ * - Queued state changes during transitions
+ * - Rendering with configurable blending modes
+ */
 typedef struct {
-    // Layout
-    uint8_t x, y;
-    uint8_t bbox_w, bbox_h;     // area to clear per frame if BLIT_OPAQUE
+    // Layout configuration
+    uint8_t x, y;               ///< Drawing position in pixels
+    uint8_t bbox_w, bbox_h;     ///< Bounding box for clearing (BLIT_OPAQUE mode)
 
-    // Rendering policy
-    blit_mode_t blit;
+    // Rendering configuration
+    blit_mode_t blit;           ///< Blending mode (opaque or additive)
 
-    // States
-    const state_desc_t *states; // array of length state_count
-    uint8_t             state_count;
+    // State configuration
+    const state_desc_t *states; ///< Array of state descriptions
+    uint8_t             state_count; ///< Number of valid states
 
-    // Condition
-    state_query_fn_t query;
-    uint32_t         user_arg;  // e.g., a MOD_MASK_* or unused (0)
+    // Condition configuration
+    state_query_fn_t query;     ///< Function to determine desired state
+    uint32_t         user_arg;  ///< Context data for query function
 
-    // Optional: initial state (if not set at init time)
-    uint8_t initial_state;
+    // Initialization
+    uint8_t initial_state;      ///< Starting state index
 } widget_config_t;
 
-// Runtime instance (one per widget)
+// ============================================================================
+// Widget Runtime
+// ============================================================================
+
+/**
+ * @brief Widget runtime instance
+ *
+ * Contains all runtime state for a declarative widget. Initialize with
+ * widget_init() and update with widget_tick() every OLED frame.
+ */
 typedef struct {
-    const widget_config_t *cfg;
+    const widget_config_t *cfg; ///< Configuration (not owned)
 
-    animator_t anim;
-    tr_phase_t phase;
+    // Animation state
+    animator_t anim;            ///< Low-level animator instance
+    tr_phase_t phase;           ///< Current transition phase
 
-    uint8_t src;      // currently visible logical state
-    uint8_t dst;      // target during an EXIT→ENTER chain
-    uint8_t pending;  // queued desired (0xFF = none)
+    // Logical state
+    uint8_t src;                ///< Currently visible/committed state
+    uint8_t dst;                ///< Target state for current transition
+    uint8_t pending;            ///< Queued desired state (0xFF = none)
 
-    bool     initialized;
+    // Status
+    bool initialized;           ///< Whether widget has been initialized
 } widget_t;
 
-// ---- API ----
+// ============================================================================
+// Widget API
+// ============================================================================
+
+/**
+ * @brief Initialize a declarative widget
+ *
+ * Sets up the widget with the given configuration and draws the initial state.
+ * The widget will be ready to respond to widget_tick() calls.
+ *
+ * @param w Widget instance to initialize
+ * @param cfg Widget configuration (must remain valid for widget lifetime)
+ * @param initial_state Starting state index (overrides cfg->initial_state)
+ * @param now Current timestamp from timer_read32()
+ */
 void widget_init(widget_t *w, const widget_config_t *cfg, uint8_t initial_state, uint32_t now);
-void widget_tick(widget_t *w, uint32_t now);  // query→transition decision→render one frame
 
-// Helpers to build declarative bits
-#define ENTER_FWD  (+1)
-#define ENTER_REV  (-1)
+/**
+ * @brief Update and render a declarative widget
+ *
+ * Call this every OLED frame to:
+ * 1. Query the desired state using the configured query function
+ * 2. Make transition decisions (start, continue, reverse, or queue changes)
+ * 3. Render the current frame with appropriate clearing/blending
+ *
+ * This function handles all state management automatically based on the
+ * widget configuration.
+ *
+ * @param w Widget instance to update
+ * @param now Current timestamp from timer_read32()
+ */
+void widget_tick(widget_t *w, uint32_t now);
 
-// Convenience macro: declare a frameset quickly (pairs nicely with your SLICE macros)
-#define DEFINE_SLICE_SEQ(name, ...)                                \
-    static const slice_t name##_frames[] = { __VA_ARGS__ };        \
-    static const slice_seq_t name = {                               \
-        name##_frames,                                              \
-        (uint8_t)(sizeof(name##_frames)/sizeof(name##_frames[0]))   \
-    }
+// ============================================================================
+// Convenience Macros
+// ============================================================================
+
+/**
+ * @brief Create a state description with forward enter direction
+ *
+ * Convenience macro for creating state_desc_t with ENTER_FWD direction.
+ * The steady state will be the last frame of the sequence.
+ *
+ * @param seq_ptr Pointer to slice_seq_t
+ */
+#define STATE_FWD(seq_ptr) { (seq_ptr), ENTER_FWD }
+
+/**
+ * @brief Create a state description with reverse enter direction
+ *
+ * Convenience macro for creating state_desc_t with ENTER_REV direction.
+ * The steady state will be the first frame of the sequence.
+ *
+ * @param seq_ptr Pointer to slice_seq_t
+ */
+#define STATE_REV(seq_ptr) { (seq_ptr), ENTER_REV }
+
+/**
+ * @brief Create a simple widget configuration
+ *
+ * Convenience macro for creating widget_config_t with common defaults.
+ * Uses BLIT_OPAQUE mode and requires manual state array definition.
+ *
+ * @param x_pos X coordinate
+ * @param y_pos Y coordinate
+ * @param width Bounding box width
+ * @param height Bounding box height
+ * @param states_array Array of state_desc_t
+ * @param count Number of states
+ * @param query_fn State query function
+ * @param user_data User argument for query function
+ * @param init_state Initial state index
+ */
+#define WIDGET_CONFIG(x_pos, y_pos, width, height, states_array, count, query_fn, user_data, init_state) \
+    { (x_pos), (y_pos), (width), (height), BLIT_OPAQUE, (states_array), (count), (query_fn), (user_data), (init_state) }
 
 // Convenience: get steady frame dims for a state (used internally too)
 static inline uint8_t state_steady_w(const state_desc_t *s) {

@@ -1,20 +1,47 @@
+/**
+ * @file oled_anim.c
+ * @brief Implementation of low-level animation engine
+ */
+
 #include QMK_KEYBOARD_H
 #include "oled_anim.h"
 
-// ---------------- animator_t ----------------
+// ============================================================================
+// Internal Helpers
+// ============================================================================
 
+/**
+ * @brief Get width of a frame in a sequence
+ * @param seq Frame sequence
+ * @param idx Frame index
+ * @return Width in pixels
+ */
 static inline uint8_t seq_w(const slice_seq_t *seq, uint8_t idx) {
     return seq->frames[idx].width;
 }
+
+/**
+ * @brief Get height of a frame in a sequence
+ * @param seq Frame sequence
+ * @param idx Frame index
+ * @return Height in pixels
+ */
 static inline uint8_t seq_h(const slice_seq_t *seq, uint8_t idx) {
     return (uint8_t)(seq->frames[idx].pages * 8);
 }
 
+// ============================================================================
+// Low-Level Animator Implementation
+// ============================================================================
+
 void animator_start(animator_t *a, const slice_seq_t *seq, bool forward, uint32_t now) {
+    // Validate input parameters
     if (!seq || !seq->count) {
         a->active = false;
         return;
     }
+
+    // Initialize animator state
     a->frames  = seq->frames;
     a->count   = seq->count;
     a->dir     = forward ? +1 : -1;
@@ -24,43 +51,65 @@ void animator_start(animator_t *a, const slice_seq_t *seq, bool forward, uint32_
 }
 
 void animator_reverse(animator_t *a, uint32_t now) {
+    // Only reverse if animation is active and valid
     if (!a->active || !a->count) return;
+
+    // Flip direction and reset timing
     a->dir = (int8_t)-a->dir;
-    a->next_ms = now + ANIM_FRAME_MS; // simple cadence reset
+    a->next_ms = now + ANIM_FRAME_MS;
 }
 
 void animator_draw_current(const animator_t *a, uint8_t x, uint8_t y) {
+    // Only draw if animation is active and valid
     if (!a->active || !a->count) return;
+
+    // Get current frame and draw with opaque clearing
     const slice_t *s = &a->frames[a->idx];
-    clear_rect(x, y, s->width, (uint8_t)(s->pages * 8));  // opaque animation
-    draw_slice_px(s, x, y);
+    clear_rect(x, y, s->width, (uint8_t)(s->pages * 8));  // Clear background first
+    draw_slice_px(s, x, y);                               // Draw current frame
 }
 
 anim_result_t animator_step(animator_t *a, uint32_t now) {
+    // Early exit if animation is not active or invalid
     if (!a->active || !a->count) return ANIM_RUNNING;
+
+    // Check if enough time has passed for next frame
     if ((int32_t)(now - a->next_ms) < 0) return ANIM_RUNNING;
 
+    // Schedule next frame
     a->next_ms += ANIM_FRAME_MS;
 
-    int16_t ni = (int16_t)a->idx + (int16_t)a->dir;
-    if (ni < 0) {
+    // Calculate next frame index
+    int16_t next_idx = (int16_t)a->idx + (int16_t)a->dir;
+
+    // Check for animation completion
+    if (next_idx < 0) {
+        // Reached start of sequence
         a->idx = 0;
         a->active = false;
         return ANIM_DONE_AT_START;
     }
-    if (ni >= a->count) {
+    if (next_idx >= a->count) {
+        // Reached end of sequence
         a->idx = (uint8_t)(a->count - 1);
         a->active = false;
         return ANIM_DONE_AT_END;
     }
-    a->idx = (uint8_t)ni;
+
+    // Continue animation
+    a->idx = (uint8_t)next_idx;
     return ANIM_RUNNING;
 }
 
 anim_result_t animator_step_and_draw(animator_t *a, uint8_t x, uint8_t y, uint32_t now) {
+    // Draw current frame first, then advance
     animator_draw_current(a, x, y);
     return animator_step(a, now);
 }
+
+// ============================================================================
+// Exclusive State Transition Controller Implementation
+// ============================================================================
 
 // ---------------- layer_transition_t ----------------
 

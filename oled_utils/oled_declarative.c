@@ -1,81 +1,153 @@
+/**
+ * @file oled_declarative.c
+ * @brief Implementation of declarative widget system
+ */
+
 #include QMK_KEYBOARD_H
 #include "oled_declarative.h"
 
-// --- Internals ---
+// ============================================================================
+// Internal Helper Functions
+// ============================================================================
 
+/**
+ * @brief Draw a frame without any clearing
+ * @param s Slice to draw
+ * @param x X coordinate
+ * @param y Y coordinate
+ */
 static inline void draw_frame_raw(const slice_t *s, uint8_t x, uint8_t y) {
-    draw_slice_px(s, x, y); // uses your rotation-safe blitter
+    draw_slice_px(s, x, y);
 }
 
+/**
+ * @brief Draw the steady frame for a specific state
+ *
+ * Determines the appropriate steady frame based on enter direction and
+ * renders it with the configured blending mode.
+ *
+ * @param w Widget instance
+ * @param state State index to draw
+ */
 static void draw_state_steady(const widget_t *w, uint8_t state) {
     const widget_config_t *cfg = w->cfg;
     const state_desc_t    *sd  = &cfg->states[state];
     const slice_seq_t     *seq = sd->seq;
 
+    // Determine steady frame based on enter direction
     const slice_t *steady = (sd->enter_dir > 0)
-        ? &seq->frames[seq->count - 1]
-        : &seq->frames[0];
+        ? &seq->frames[seq->count - 1]  // Forward: steady is last frame
+        : &seq->frames[0];              // Reverse: steady is first frame
 
+    // Clear background if using opaque blending
     if (cfg->blit == BLIT_OPAQUE) {
         clear_rect(cfg->x, cfg->y, cfg->bbox_w, cfg->bbox_h);
     }
+
+    // Draw the steady frame
     draw_frame_raw(steady, cfg->x, cfg->y);
 }
 
-// Map: for a given state's canonical sequence + enter_dir, what do we use for ENTER/EXIT?
+/**
+ * @brief Animation direction mapping for enter/exit transitions
+ *
+ * Maps a state's configuration to the actual animation parameters needed
+ * for enter and exit transitions.
+ */
 typedef struct {
-    const slice_seq_t *seq;
-    bool forward; // true = 0→end, false = end→0
+    const slice_seq_t *seq;     ///< Animation sequence to use
+    bool forward;               ///< Direction: true = 0→end, false = end→0
 } mapped_anim_t;
 
+/**
+ * @brief Get animation mapping for entering a state
+ * @param sd State description
+ * @return Animation mapping for enter transition
+ */
 static mapped_anim_t map_enter_of(const state_desc_t *sd) {
     mapped_anim_t m = { sd->seq, sd->enter_dir > 0 };
     return m;
 }
+
+/**
+ * @brief Get animation mapping for exiting a state
+ * @param sd State description
+ * @return Animation mapping for exit transition (opposite of enter)
+ */
 static mapped_anim_t map_exit_of(const state_desc_t *sd) {
-    // Exit direction is the opposite of enter
-    mapped_anim_t m = { sd->seq, sd->enter_dir <= 0 }; // if enter_rev, exit is forward
+    // Exit direction is the opposite of enter direction
+    mapped_anim_t m = { sd->seq, sd->enter_dir <= 0 };
     return m;
 }
 
+/**
+ * @brief Start exit animation for current state
+ * @param w Widget instance
+ * @param now Current timestamp
+ */
 static inline void start_exit(widget_t *w, uint32_t now) {
     const widget_config_t *cfg = w->cfg;
     const state_desc_t    *sd  = &cfg->states[w->src];
     mapped_anim_t m = map_exit_of(sd);
 
-    animator_start(&w->anim, sd->seq, /*forward=*/m.forward, now);
+    animator_start(&w->anim, sd->seq, m.forward, now);
     w->phase = TR_EXIT;
 }
+
+/**
+ * @brief Start enter animation for current state
+ * @param w Widget instance
+ * @param now Current timestamp
+ */
 static inline void start_enter(widget_t *w, uint32_t now) {
     const widget_config_t *cfg = w->cfg;
     const state_desc_t    *sd  = &cfg->states[w->src];
     mapped_anim_t m = map_enter_of(sd);
 
-    animator_start(&w->anim, sd->seq, /*forward=*/m.forward, now);
+    animator_start(&w->anim, sd->seq, m.forward, now);
     w->phase = TR_ENTER;
 }
 
+/**
+ * @brief Clear widget bounding box if using opaque blending
+ * @param w Widget instance
+ */
 static inline void pre_clear_bbox_if_opaque(const widget_t *w) {
     if (w->cfg->blit == BLIT_OPAQUE) {
         clear_rect(w->cfg->x, w->cfg->y, w->cfg->bbox_w, w->cfg->bbox_h);
     }
 }
 
-// We want to draw current frame without leaving trails even if frames vary in size.
-// Easiest: clear the declared bbox, then let animator draw current frame (which
-// itself clears only its own frame box if your animator_draw_current does; to avoid
-// double clear, we call animator_step first then draw).
+/**
+ * @brief Step animation and draw current frame
+ *
+ * Advances the animation by one frame and draws the result. Handles
+ * background clearing based on the widget's blending mode to prevent
+ * trails between frames of different sizes.
+ *
+ * @param w Widget instance
+ * @param now Current timestamp
+ * @return Animation result (running, done at start, or done at end)
+ */
 static anim_result_t step_then_draw(widget_t *w, uint32_t now) {
+    // Step animation first
     anim_result_t r = animator_step(&w->anim, now);
+
+    // Clear background if using opaque blending
     pre_clear_bbox_if_opaque(w);
 
-    // Draw current frame
+    // Draw current frame if animation is active
     if (w->anim.active && w->anim.count) {
         const slice_t *s = &w->anim.frames[w->anim.idx];
         draw_frame_raw(s, w->cfg->x, w->cfg->y);
     }
+
     return r;
 }
+
+// ============================================================================
+// Public API Implementation
+// ============================================================================
 
 // --- Public API ---
 
