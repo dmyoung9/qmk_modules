@@ -15,7 +15,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include QMK_KEYBOARD_H
-#include "oled_utils.h"  // for slice_t, clear_rect, draw_slice_px
+#include "oled_slice.h"  // for slice_t
+#include "oled_utils.h"  // for clear_rect, draw_slice_px
 
 /**
  * @brief Default frame duration in milliseconds

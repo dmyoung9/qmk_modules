@@ -15,7 +15,8 @@
 #include <stdbool.h>
 #include QMK_KEYBOARD_H
 
-#include "oled_utils.h"   // slice_t, clear_rect, draw_slice_px
+#include "oled_slice.h"   // slice_t
+#include "oled_utils.h"   // clear_rect, draw_slice_px
 #include "oled_anim.h"    // slice_seq_t, animator_t, anim_result_t, TR_* enums
 
 // ============================================================================
@@ -81,15 +82,69 @@ typedef struct {
 } state_desc_t;
 
 /**
- * @brief State query callback function
+ * @brief State query callback function (new signature)
  *
  * Called by widgets to determine the desired state. Should return a state
  * index in the range [0, state_count-1]. Use user_arg to pass context data.
  *
  * @param user_arg Context data passed from widget configuration
+ * @param current_state Current visible state (for context-aware queries)
+ * @param now Current timestamp (for time-based state logic)
+ * @return Desired state index, or 0xFF to indicate no change
+ */
+typedef uint8_t (*state_query_fn_t)(uint32_t user_arg, uint8_t current_state, uint32_t now);
+
+/**
+ * @brief Legacy state query callback function (backward compatibility)
+ *
+ * Legacy signature for backward compatibility with existing code.
+ * New code should use state_query_fn_t instead.
+ *
+ * @param user_arg Context data passed from widget configuration
  * @return Desired state index
  */
-typedef uint8_t (*state_query_fn_t)(uint32_t user_arg);
+typedef uint8_t (*state_query_legacy_fn_t)(uint32_t user_arg);
+
+// Forward declarations
+typedef struct widget_config widget_config_t;
+typedef struct widget_runtime widget_t;
+
+/**
+ * @brief Widget validation callback function
+ *
+ * Optional callback to validate widget configuration and state.
+ * Called during initialization and optionally during runtime.
+ *
+ * @param cfg Widget configuration to validate
+ * @param runtime_state Current runtime state (NULL during init)
+ * @return true if valid, false if invalid
+ */
+typedef bool (*widget_validate_fn_t)(const widget_config_t *cfg, const widget_t *runtime_state);
+
+/**
+ * @brief Widget error callback function
+ *
+ * Optional callback to handle widget errors (stuck animations, invalid states, etc.)
+ * Allows custom error recovery or logging.
+ *
+ * @param cfg Widget configuration
+ * @param error_code Error type (see widget_error_t)
+ * @param context Additional context data
+ */
+typedef void (*widget_error_fn_t)(const widget_config_t *cfg, uint8_t error_code, uint32_t context);
+
+/**
+ * @brief Widget error codes
+ */
+typedef enum {
+    WIDGET_ERROR_NONE = 0,          ///< No error
+    WIDGET_ERROR_INVALID_CONFIG,    ///< Invalid configuration detected
+    WIDGET_ERROR_INVALID_STATE,     ///< Query returned invalid state index
+    WIDGET_ERROR_STUCK_ANIMATION,   ///< Animation stuck (watchdog timeout)
+    WIDGET_ERROR_NULL_SEQUENCE,     ///< Null animation sequence
+    WIDGET_ERROR_EMPTY_SEQUENCE,    ///< Empty animation sequence
+    WIDGET_ERROR_QUERY_FAILED       ///< State query function failed
+} widget_error_t;
 
 // ============================================================================
 // Widget Configuration
@@ -107,8 +162,9 @@ typedef uint8_t (*state_query_fn_t)(uint32_t user_arg);
  * - Mid-flight reversal and cancellation
  * - Queued state changes during transitions
  * - Rendering with configurable blending modes
+ * - Error detection and recovery
  */
-typedef struct {
+struct widget_config {
     // Layout configuration
     uint8_t x, y;               ///< Drawing position in pixels
     uint8_t bbox_w, bbox_h;     ///< Bounding box for clearing (BLIT_OPAQUE mode)
@@ -121,12 +177,22 @@ typedef struct {
     uint8_t             state_count; ///< Number of valid states
 
     // Condition configuration
-    state_query_fn_t query;     ///< Function to determine desired state
+    state_query_fn_t query;     ///< Function to determine desired state (new signature)
+    state_query_legacy_fn_t legacy_query; ///< Legacy query function (backward compatibility)
     uint32_t         user_arg;  ///< Context data for query function
 
     // Initialization
     uint8_t initial_state;      ///< Starting state index
-} widget_config_t;
+
+    // Error handling and validation (optional)
+    widget_validate_fn_t validate; ///< Validation callback (NULL = no validation)
+    widget_error_fn_t    on_error;  ///< Error handler callback (NULL = ignore errors)
+
+    // Advanced configuration
+    uint16_t query_interval_ms; ///< Minimum interval between state queries (0 = every frame)
+    bool     auto_recover;      ///< Automatically recover from stuck animations
+    uint8_t  max_retries;       ///< Maximum retry attempts for failed operations
+};
 
 // ============================================================================
 // Widget Runtime
@@ -138,7 +204,7 @@ typedef struct {
  * Contains all runtime state for a declarative widget. Initialize with
  * widget_init() and update with widget_tick() every OLED frame.
  */
-typedef struct {
+struct widget_runtime {
     const widget_config_t *cfg; ///< Configuration (not owned)
 
     // Animation state
@@ -150,14 +216,23 @@ typedef struct {
     uint8_t dst;                ///< Target state for current transition
     uint8_t pending;            ///< Queued desired state (0xFF = none)
 
-    // Watchdog state
-    uint8_t last_query_result;  ///< Last result from query function
+    // Watchdog and error state
+    uint8_t  last_query_result; ///< Last result from query function
     uint32_t last_state_change; ///< Timestamp of last state change
+    uint32_t last_query_time;   ///< Timestamp of last query execution
     uint32_t stuck_timeout;     ///< Timestamp when stuck condition was detected (0 = not stuck)
 
-    // Status
+    // Error tracking
+    widget_error_t last_error;  ///< Last error that occurred
+    uint8_t        error_count; ///< Number of consecutive errors
+    uint8_t        retry_count; ///< Current retry attempt count
+    uint32_t       last_error_time; ///< Timestamp of last error
+
+    // Status flags
     bool initialized;           ///< Whether widget has been initialized
-} widget_t;
+    bool error_state;           ///< Whether widget is in error state
+    bool recovery_mode;         ///< Whether widget is attempting recovery
+};
 
 // ============================================================================
 // Widget API
@@ -183,6 +258,7 @@ void widget_init(widget_t *w, const widget_config_t *cfg, uint8_t initial_state,
  * 1. Query the desired state using the configured query function
  * 2. Make transition decisions (start, continue, reverse, or queue changes)
  * 3. Render the current frame with appropriate clearing/blending
+ * 4. Handle error detection and recovery
  *
  * This function handles all state management automatically based on the
  * widget configuration.
@@ -191,6 +267,71 @@ void widget_init(widget_t *w, const widget_config_t *cfg, uint8_t initial_state,
  * @param now Current timestamp from timer_read32()
  */
 void widget_tick(widget_t *w, uint32_t now);
+
+/**
+ * @brief Validate widget configuration
+ *
+ * Checks widget configuration for common errors and inconsistencies.
+ * Can be called before initialization to catch configuration issues early.
+ *
+ * @param cfg Widget configuration to validate
+ * @return true if configuration is valid, false otherwise
+ */
+bool widget_validate_config(const widget_config_t *cfg);
+
+/**
+ * @brief Force widget state change
+ *
+ * Immediately changes widget to the specified state, bypassing normal
+ * query-driven state management. Useful for manual control or error recovery.
+ *
+ * @param w Widget instance
+ * @param new_state Target state index
+ * @param now Current timestamp from timer_read32()
+ * @return true if state change was accepted, false if invalid
+ */
+bool widget_force_state(widget_t *w, uint8_t new_state, uint32_t now);
+
+/**
+ * @brief Reset widget to initial state
+ *
+ * Clears all error conditions and resets widget to its initial state.
+ * Useful for error recovery or manual reset.
+ *
+ * @param w Widget instance
+ * @param now Current timestamp from timer_read32()
+ */
+void widget_reset(widget_t *w, uint32_t now);
+
+/**
+ * @brief Get widget error status
+ *
+ * Returns information about the widget's current error state.
+ *
+ * @param w Widget instance
+ * @return Current error code (WIDGET_ERROR_NONE if no error)
+ */
+widget_error_t widget_get_error(const widget_t *w);
+
+/**
+ * @brief Check if widget is in error state
+ *
+ * @param w Widget instance
+ * @return true if widget has unrecovered errors, false otherwise
+ */
+static inline bool widget_has_error(const widget_t *w) {
+    return w && w->error_state;
+}
+
+/**
+ * @brief Check if widget is currently animating
+ *
+ * @param w Widget instance
+ * @return true if animation is in progress, false if idle
+ */
+static inline bool widget_is_animating(const widget_t *w) {
+    return w && w->anim.active;
+}
 
 // ============================================================================
 // Convenience Macros
@@ -220,7 +361,7 @@ void widget_tick(widget_t *w, uint32_t now);
  * @brief Create a simple widget configuration
  *
  * Convenience macro for creating widget_config_t with common defaults.
- * Uses BLIT_OPAQUE mode and requires manual state array definition.
+ * Uses BLIT_OPAQUE mode and basic error handling.
  *
  * @param x_pos X coordinate
  * @param y_pos Y coordinate
@@ -233,7 +374,73 @@ void widget_tick(widget_t *w, uint32_t now);
  * @param init_state Initial state index
  */
 #define WIDGET_CONFIG(x_pos, y_pos, width, height, states_array, count, query_fn, user_data, init_state) \
-    { (x_pos), (y_pos), (width), (height), BLIT_OPAQUE, (states_array), (count), (query_fn), (user_data), (init_state) }
+    { (x_pos), (y_pos), (width), (height), BLIT_OPAQUE, (states_array), (count), (query_fn), NULL, (user_data), (init_state), \
+      NULL, NULL, 0, true, 3 }
+
+/**
+ * @brief Create a widget configuration with legacy query function
+ *
+ * For backward compatibility with existing code that uses the old query signature.
+ *
+ * @param x_pos X coordinate
+ * @param y_pos Y coordinate
+ * @param width Bounding box width
+ * @param height Bounding box height
+ * @param states_array Array of state_desc_t
+ * @param count Number of states
+ * @param legacy_query_fn Legacy query function (old signature)
+ * @param user_data User argument for query function
+ * @param init_state Initial state index
+ */
+#define WIDGET_CONFIG_LEGACY(x_pos, y_pos, width, height, states_array, count, legacy_query_fn, user_data, init_state) \
+    { (x_pos), (y_pos), (width), (height), BLIT_OPAQUE, (states_array), (count), NULL, (legacy_query_fn), (user_data), (init_state), \
+      NULL, NULL, 0, true, 3 }
+
+/**
+ * @brief Create an advanced widget configuration
+ *
+ * Full configuration macro with all options exposed.
+ *
+ * @param x_pos X coordinate
+ * @param y_pos Y coordinate
+ * @param width Bounding box width
+ * @param height Bounding box height
+ * @param blit_mode Blending mode (BLIT_OPAQUE or BLIT_ADDITIVE)
+ * @param states_array Array of state_desc_t
+ * @param count Number of states
+ * @param query_fn State query function
+ * @param user_data User argument for query function
+ * @param init_state Initial state index
+ * @param validate_fn Validation callback (NULL for none)
+ * @param error_fn Error handler callback (NULL for none)
+ * @param query_interval_ms Minimum query interval in milliseconds
+ * @param auto_recover Enable automatic error recovery
+ * @param max_retries Maximum retry attempts
+ */
+#define WIDGET_CONFIG_ADVANCED(x_pos, y_pos, width, height, blit_mode, states_array, count, query_fn, user_data, init_state, \
+                              validate_fn, error_fn, query_interval_ms, auto_recover, max_retries) \
+    { (x_pos), (y_pos), (width), (height), (blit_mode), (states_array), (count), (query_fn), NULL, (user_data), (init_state), \
+      (validate_fn), (error_fn), (query_interval_ms), (auto_recover), (max_retries) }
+
+/**
+ * @brief Create a widget configuration with error handling
+ *
+ * Convenience macro for widgets that need custom error handling.
+ *
+ * @param x_pos X coordinate
+ * @param y_pos Y coordinate
+ * @param width Bounding box width
+ * @param height Bounding box height
+ * @param states_array Array of state_desc_t
+ * @param count Number of states
+ * @param query_fn State query function
+ * @param user_data User argument for query function
+ * @param init_state Initial state index
+ * @param error_fn Error handler callback
+ */
+#define WIDGET_CONFIG_WITH_ERROR_HANDLER(x_pos, y_pos, width, height, states_array, count, query_fn, user_data, init_state, error_fn) \
+    { (x_pos), (y_pos), (width), (height), BLIT_OPAQUE, (states_array), (count), (query_fn), NULL, (user_data), (init_state), \
+      NULL, (error_fn), 0, true, 3 }
 
 // Convenience: get steady frame dims for a state (used internally too)
 static inline uint8_t state_steady_w(const state_desc_t *s) {

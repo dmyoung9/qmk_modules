@@ -1,6 +1,6 @@
 # OLED Utils
 
-A comprehensive OLED animation and widget system for QMK keyboards, providing rotation-safe drawing, declarative animations, and fluent APIs for creating sophisticated OLED displays.
+A comprehensive, modular OLED animation and widget system for QMK keyboards, providing rotation-safe drawing, declarative animations, and fluent APIs for creating sophisticated OLED displays.
 
 ## Features
 
@@ -8,8 +8,13 @@ A comprehensive OLED animation and widget system for QMK keyboards, providing ro
 - **Rotation-safe drawing** on 128×32 OLEDs with page-packed memory
 - **Simple, reliable clearing** of arbitrary rectangles and common spans
 - **Fast blitting** for page-aligned art with correct blending for unaligned Y coordinates
+- **Clean separation of concerns** with modular architecture
+
+### Bitmap Slice System (`oled_slice`)
 - **PROGMEM-friendly bitmap abstraction** without compiler warnings
-- **Comprehensive SLICE macros** for common bitmap sizes
+- **Comprehensive SLICE macros** for all common bitmap sizes (8×8 to 128×32)
+- **Arbitrary height support** for non-page-aligned bitmaps
+- **Utility functions** for slice validation and dimension queries
 
 ### Animation Engine (`oled_anim`)
 - **Low-level frame animator** with direction control and mid-flight reversal
@@ -18,12 +23,19 @@ A comprehensive OLED animation and widget system for QMK keyboards, providing ro
 - **Concurrent, independent widgets** with automatic timing management
 - **Chained transitions** (exit old → enter new) with graceful cancellation
 
-### Declarative Widget System (`oled_declarative`)
+### Unified Animation Controller (`oled_unified_anim`)
+- **Single controller** that handles all animation patterns through configuration
+- **Consolidates** oneshot, outback, bootrev, toggle, and layer transition behaviors
+- **Simplified API** with consistent behavior across all animation types
+- **Backward compatibility** through configuration macros
+
+### Enhanced Declarative Widget System (`oled_declarative`)
 - **Fully declarative configuration** for widgets: states, conditions, positions, sizes
 - **Automatic state management** with smooth transitions
 - **Configurable blending modes** (opaque vs additive)
 - **Query-driven state updates** with user-defined condition functions
-- **Works for both exclusive and independent widgets**
+- **Advanced error handling** with validation and recovery mechanisms
+- **Performance optimizations** with configurable query intervals
 
 ## Quick Start
 
@@ -36,12 +48,32 @@ A comprehensive OLED animation and widget system for QMK keyboards, providing ro
 }
 ```
 
-2. Include the headers in your code:
+2. Include the headers you need:
 ```c
-#include "oled_utils.h"
-#include "oled_anim.h"
-#include "oled_declarative.h"
+#include "oled_utils.h"        // Core drawing functions
+#include "oled_slice.h"        // SLICE macros (auto-included by oled_utils.h)
+#include "oled_anim.h"         // Animation controllers
+#include "oled_declarative.h"  // Declarative widgets
+#include "oled_unified_anim.h" // Unified animation controller (optional)
 ```
+
+### Migration from Previous Versions
+
+**No changes needed for basic usage!** The refactored module maintains full backward compatibility:
+
+```c
+// This code still works exactly the same:
+#include "oled_utils.h"
+slice_t my_slice = SLICE16x8(my_data);
+draw_slice_px(&my_slice, x, y);
+clear_rect(x, y, w, h);
+```
+
+**New features available:**
+- More SLICE macros in `oled_slice.h` (8×8 to 128×32, arbitrary heights)
+- Unified animation controller in `oled_unified_anim.h`
+- Enhanced error handling in declarative widgets
+- Better separation of concerns with modular architecture
 
 ### Simple Drawing Example
 
@@ -52,9 +84,13 @@ const uint8_t PROGMEM my_icon[] = {
     0x00, 0x00, 0x18, 0x24, 0x24, 0x18, 0x00, 0x00
 };
 
-// Create a slice and draw it
+// Create slice and draw (SLICE macros from oled_slice.h)
 slice_t icon = SLICE8x16(my_icon);
-draw_slice_px(&icon, 10, 8);  // Draw at position (10, 8)
+draw_slice_px(&icon, 10, 8);
+
+// Clear areas
+clear_rect(0, 0, 32, 16);
+clear_span16(64, 8);  // Clear 16x8 area
 ```
 
 ### Animation Example

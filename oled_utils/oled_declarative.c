@@ -173,7 +173,14 @@ void widget_tick(widget_t *w, uint32_t now) {
     if (!w->initialized) return;
 
     // 1) Ask "what do you want to be?"
-    uint8_t desired = w->cfg->query ? w->cfg->query(w->cfg->user_arg) : w->src;
+    uint8_t desired = w->src; // default to current state
+    if (w->cfg->query) {
+        // Use new signature
+        desired = w->cfg->query(w->cfg->user_arg, w->src, now);
+    } else if (w->cfg->legacy_query) {
+        // Use legacy signature for backward compatibility
+        desired = w->cfg->legacy_query(w->cfg->user_arg);
+    }
     if (desired >= w->cfg->state_count) desired = w->src; // safety
 
     // 2) Watchdog: detect state changes and stuck animations
