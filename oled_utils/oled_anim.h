@@ -160,6 +160,20 @@ anim_result_t animator_step(animator_t *a, uint32_t now);
  */
 anim_result_t animator_step_and_draw(animator_t *a, uint8_t x, uint8_t y, uint32_t now);
 
+/**
+ * @brief Step animation and draw current frame with OR blending
+ *
+ * Same as animator_step_and_draw but uses OR blending (no background clear).
+ * This allows multiple animations to be layered without overwriting each other.
+ *
+ * @param a Animator instance
+ * @param x X coordinate for drawing
+ * @param y Y coordinate for drawing
+ * @param now Current timestamp from timer_read32()
+ * @return Animation result (ANIM_RUNNING, ANIM_DONE_AT_START, ANIM_DONE_AT_END)
+ */
+anim_result_t animator_step_and_draw_blend(animator_t *a, uint8_t x, uint8_t y, uint32_t now);
+
 // ============================================================================
 // State Transition Controllers
 // ============================================================================
@@ -330,6 +344,18 @@ void toggle_anim_set(toggle_anim_t *w, bool want_on, uint32_t now);
  * @param now Current timestamp from timer_read32()
  */
 void toggle_anim_render(toggle_anim_t *w, uint32_t now);
+
+/**
+ * @brief Advance and render the toggle controller with blend mode
+ *
+ * Same as toggle_anim_render but with optional OR blending support.
+ * When use_or_blend is true, frames are drawn without clearing background.
+ *
+ * @param w Toggle controller instance
+ * @param now Current timestamp from timer_read32()
+ * @param use_or_blend true for OR blending (no clear), false for opaque (clear first)
+ */
+void toggle_anim_render_blend(toggle_anim_t *w, uint32_t now, bool use_or_blend);
 
 // ============================================================================
 // One-Shot Animation Controllers
@@ -614,6 +640,19 @@ void bootrev_anim_trigger(bootrev_anim_t *w, uint32_t now);
  * @return true if animation just completed this frame, false otherwise
  */
 bool bootrev_anim_render(bootrev_anim_t *w, uint32_t now);
+
+/**
+ * @brief Advance and render the boot-reverse controller with blend mode
+ *
+ * Same as bootrev_anim_render but with optional OR blending support.
+ * When use_or_blend is true, frames are drawn without clearing background.
+ *
+ * @param w Boot-reverse controller instance
+ * @param now Current timestamp from timer_read32()
+ * @param use_or_blend true for OR blending (no clear), false for opaque (clear first)
+ * @return true if animation just completed this frame, false otherwise
+ */
+bool bootrev_anim_render_blend(bootrev_anim_t *w, uint32_t now, bool use_or_blend);
 
 /**
  * @brief Check if boot-reverse animation is currently running

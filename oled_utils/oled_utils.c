@@ -60,6 +60,9 @@ void draw_slice_px(const slice_t *s, uint8_t x_px, uint8_t y_px) {
         w = OLED_DISPLAY_WIDTH - x_px;
     }
 
+    // Get actual height in pixels (handles arbitrary heights)
+    const uint8_t actual_height = slice_height_px(s);
+
     // Calculate page alignment parameters
     const uint8_t y_off    = (y_px & 7);        // Offset within page (0-7)
     const uint8_t start_pg = (y_px >> 3);       // Starting page number
@@ -75,15 +78,38 @@ void draw_slice_px(const slice_t *s, uint8_t x_px, uint8_t y_px) {
             uint16_t               dst_base = oled_offset(x_px, dst_pg);
             const uint8_t PROGMEM *src      = s->data + (uint16_t)p * s->width;
 
-            // Copy entire row with PROGMEM reads
-            for (uint8_t i = 0; i < w; i++) {
-                oled_write_raw_byte(pgm_read_byte(src + i), dst_base + i);
+            // Check if this is the last page and we have arbitrary height
+            const bool is_last_page = (p == s->pages - 1);
+            const bool has_arbitrary_height = (s->height_px > 0);
+
+            if (is_last_page && has_arbitrary_height) {
+                // Calculate how many pixels to draw in the last page
+                const uint8_t pixels_in_last_page = actual_height - (p * 8);
+                const uint8_t src_mask = (uint8_t)((1 << pixels_in_last_page) - 1);
+                const uint8_t dst_mask = (uint8_t)(~src_mask); // Preserve existing bits
+
+                // Read-modify-write with proper masking
+                oled_buffer_reader_t r = oled_read_raw(dst_base);
+                uint8_t *dst = r.current_element;
+
+                for (uint8_t i = 0; i < w; i++) {
+                    uint8_t src_byte = pgm_read_byte(src + i);
+                    uint8_t dst_byte = dst[i];
+                    // Clear the bits we're going to write, then set the new bits
+                    uint8_t new_val = (dst_byte & dst_mask) | (src_byte & src_mask);
+                    oled_write_raw_byte(new_val, dst_base + i);
+                }
+            } else {
+                // Copy entire row with PROGMEM reads
+                for (uint8_t i = 0; i < w; i++) {
+                    oled_write_raw_byte(pgm_read_byte(src + i), dst_base + i);
+                }
             }
         }
         return;
     }
 
-    // Unaligned path: split each source byte across two pages with OR-blending
+    // Unaligned path: split each source byte across two pages with proper masking
     const uint8_t carry_shift = (uint8_t)(8 - y_off);
 
     for (uint8_t p = 0; p < s->pages; p++) {
@@ -91,6 +117,23 @@ void draw_slice_px(const slice_t *s, uint8_t x_px, uint8_t y_px) {
         const uint8_t dst_pg_hi = (uint8_t)(dst_pg_lo + 1);   // Upper destination page
 
         const uint8_t PROGMEM *src = s->data + (uint16_t)p * s->width;
+
+        // Check if this is the last page and we have arbitrary height
+        const bool is_last_page = (p == s->pages - 1);
+        const bool has_arbitrary_height = (s->height_px > 0);
+        uint8_t src_mask = 0xFF; // Default: use all bits
+
+        if (is_last_page && has_arbitrary_height) {
+            // Calculate how many pixels to draw in the last page
+            const uint8_t pixels_in_last_page = actual_height - (p * 8);
+            src_mask = (uint8_t)((1 << pixels_in_last_page) - 1);
+        }
+
+        // Calculate masks for destination pages
+        const uint8_t lo_src_mask = (uint8_t)(src_mask << y_off);
+        const uint8_t lo_dst_mask = (uint8_t)(~lo_src_mask);
+        const uint8_t hi_src_mask = (uint8_t)(src_mask >> carry_shift);
+        const uint8_t hi_dst_mask = (uint8_t)(~hi_src_mask);
 
         // Write to lower page (shift source bits up)
         if (dst_pg_lo < max_pg) {
@@ -100,7 +143,8 @@ void draw_slice_px(const slice_t *s, uint8_t x_px, uint8_t y_px) {
 
             for (uint8_t i = 0; i < w; i++) {
                 uint8_t src_byte = pgm_read_byte(src + i);
-                uint8_t new_val  = (uint8_t)(dst[i] | (uint8_t)(src_byte << y_off));
+                uint8_t src_shifted = (uint8_t)(src_byte << y_off);
+                uint8_t new_val = (dst[i] & lo_dst_mask) | (src_shifted & lo_src_mask);
                 oled_write_raw_byte(new_val, base + i);
             }
         }
@@ -113,7 +157,8 @@ void draw_slice_px(const slice_t *s, uint8_t x_px, uint8_t y_px) {
 
             for (uint8_t i = 0; i < w; i++) {
                 uint8_t src_byte = pgm_read_byte(src + i);
-                uint8_t new_val  = (uint8_t)(dst[i] | (uint8_t)(src_byte >> carry_shift));
+                uint8_t src_shifted = (uint8_t)(src_byte >> carry_shift);
+                uint8_t new_val = (dst[i] & hi_dst_mask) | (src_shifted & hi_src_mask);
                 oled_write_raw_byte(new_val, base + i);
             }
         }

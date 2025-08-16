@@ -107,6 +107,15 @@ anim_result_t animator_step_and_draw(animator_t *a, uint8_t x, uint8_t y, uint32
     return animator_step(a, now);
 }
 
+anim_result_t animator_step_and_draw_blend(animator_t *a, uint8_t x, uint8_t y, uint32_t now) {
+    // Draw current frame with OR blending (no clear), then advance
+    if (a->active && a->count) {
+        const slice_t *s = &a->frames[a->idx];
+        draw_slice_px(s, x, y);  // No clear_rect() call - OR blend
+    }
+    return animator_step(a, now);
+}
+
 // ============================================================================
 // Exclusive State Transition Controller Implementation
 // ============================================================================
@@ -262,10 +271,12 @@ void layer_tr_render(layer_transition_t *t, uint32_t now) {
     }
 }
 
-static inline void toggle_draw_steady(const toggle_anim_t *w, bool on) {
+static inline void toggle_draw_steady(const toggle_anim_t *w, bool on, bool use_or_blend) {
     const slice_t *s = on ? &w->seq->frames[w->seq->count - 1]
                           : &w->seq->frames[0];
-    clear_rect(w->x, w->y, s->width, (uint8_t)(s->pages * 8));
+    if (!use_or_blend) {
+        clear_rect(w->x, w->y, s->width, slice_height_px(s));
+    }
     draw_slice_px(s, w->x, w->y);
 }
 
@@ -278,7 +289,7 @@ void toggle_anim_init(toggle_anim_t *w, const slice_seq_t *seq,
     w->visible_on = initial_on;
     w->desired_on = initial_on;
     w->anim.active = false;
-    toggle_draw_steady(w, initial_on);
+    toggle_draw_steady(w, initial_on, false);
 }
 
 void toggle_anim_set(toggle_anim_t *w, bool want_on, uint32_t now) {
@@ -316,17 +327,23 @@ void toggle_anim_set(toggle_anim_t *w, bool want_on, uint32_t now) {
 }
 
 void toggle_anim_render(toggle_anim_t *w, uint32_t now) {
+    toggle_anim_render_blend(w, now, false);
+}
+
+void toggle_anim_render_blend(toggle_anim_t *w, uint32_t now, bool use_or_blend) {
     switch (w->phase) {
     case TOG_IDLE_OFF:
-        toggle_draw_steady(w, /*on=*/false);
+        toggle_draw_steady(w, /*on=*/false, use_or_blend);
         return;
 
     case TOG_IDLE_ON:
-        toggle_draw_steady(w, /*on=*/true);
+        toggle_draw_steady(w, /*on=*/true, use_or_blend);
         return;
 
     case TOG_ENTERING: {
-        anim_result_t r = animator_step_and_draw(&w->anim, w->x, w->y, now);
+        anim_result_t r = use_or_blend
+            ? animator_step_and_draw_blend(&w->anim, w->x, w->y, now)
+            : animator_step_and_draw(&w->anim, w->x, w->y, now);
         if (r == ANIM_DONE_AT_END) {
             w->phase = TOG_IDLE_ON;
             w->visible_on = true;
@@ -337,7 +354,9 @@ void toggle_anim_render(toggle_anim_t *w, uint32_t now) {
     }
 
     case TOG_EXITING: {
-        anim_result_t r = animator_step_and_draw(&w->anim, w->x, w->y, now);
+        anim_result_t r = use_or_blend
+            ? animator_step_and_draw_blend(&w->anim, w->x, w->y, now)
+            : animator_step_and_draw(&w->anim, w->x, w->y, now);
         if (r == ANIM_DONE_AT_START) {
             w->phase = TOG_IDLE_OFF;
             w->visible_on = false;
@@ -532,14 +551,17 @@ bool outback_anim_render(outback_anim_t *w, uint32_t now) {
 /**
  * @brief Draw the steady frame for boot-reverse animation (always last frame)
  * @param w Boot-reverse controller instance
+ * @param use_or_blend If true, use OR blending (no clear), if false use opaque (clear first)
  */
-static inline void bootrev_draw_steady(const bootrev_anim_t *w) {
+static inline void bootrev_draw_steady(const bootrev_anim_t *w, bool use_or_blend) {
     if (!w->seq || !w->seq->count) return;
 
     // Steady frame is always the last frame
     const slice_t *steady = &w->seq->frames[w->seq->count - 1];
 
-    clear_rect(w->x, w->y, steady->width, (uint8_t)(steady->pages * 8));
+    if (!use_or_blend) {
+        clear_rect(w->x, w->y, steady->width, slice_height_px(steady));
+    }
     draw_slice_px(steady, w->x, w->y);
 }
 
@@ -559,7 +581,7 @@ void bootrev_anim_init(bootrev_anim_t *w, const slice_seq_t *seq,
         // Start idle at last frame
         w->phase = BOOTREV_IDLE;
         w->boot_done = true;  // Mark boot as done if we're not running it
-        bootrev_draw_steady(w);
+        bootrev_draw_steady(w, false);  // false = opaque (clear first)
     }
 }
 
@@ -573,26 +595,34 @@ void bootrev_anim_trigger(bootrev_anim_t *w, uint32_t now) {
 }
 
 bool bootrev_anim_render(bootrev_anim_t *w, uint32_t now) {
+    return bootrev_anim_render_blend(w, now, false);
+}
+
+bool bootrev_anim_render_blend(bootrev_anim_t *w, uint32_t now, bool use_or_blend) {
     switch (w->phase) {
         case BOOTREV_IDLE:
             // Draw steady frame (last frame) and stay idle
-            bootrev_draw_steady(w);
+            bootrev_draw_steady(w, use_or_blend);
             return false;
 
         case BOOTREV_BOOT: {
-            anim_result_t r = animator_step_and_draw(&w->anim, w->x, w->y, now);
+            anim_result_t r = use_or_blend
+                ? animator_step_and_draw_blend(&w->anim, w->x, w->y, now)
+                : animator_step_and_draw(&w->anim, w->x, w->y, now);
             if (r == ANIM_DONE_AT_END) {
                 // Boot animation completed (reached last frame)
                 w->phase = BOOTREV_IDLE;
                 w->boot_done = true;
-                bootrev_draw_steady(w);
+                bootrev_draw_steady(w, use_or_blend);
                 return true;  // Animation just completed
             }
             return false;
         }
 
         case BOOTREV_OUT: {
-            anim_result_t r = animator_step_and_draw(&w->anim, w->x, w->y, now);
+            anim_result_t r = use_or_blend
+                ? animator_step_and_draw_blend(&w->anim, w->x, w->y, now)
+                : animator_step_and_draw(&w->anim, w->x, w->y, now);
             if (r == ANIM_DONE_AT_START) {
                 // "Out" phase completed (reached first frame), start "back" phase (forward)
                 animator_start(&w->anim, w->seq, /*forward=*/true, now);
@@ -602,11 +632,13 @@ bool bootrev_anim_render(bootrev_anim_t *w, uint32_t now) {
         }
 
         case BOOTREV_BACK: {
-            anim_result_t r = animator_step_and_draw(&w->anim, w->x, w->y, now);
+            anim_result_t r = use_or_blend
+                ? animator_step_and_draw_blend(&w->anim, w->x, w->y, now)
+                : animator_step_and_draw(&w->anim, w->x, w->y, now);
             if (r == ANIM_DONE_AT_END) {
                 // "Back" phase completed (reached last frame), return to idle
                 w->phase = BOOTREV_IDLE;
-                bootrev_draw_steady(w);
+                bootrev_draw_steady(w, use_or_blend);
                 return true;  // Animation just completed
             }
             return false;
