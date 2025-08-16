@@ -371,18 +371,29 @@ void toggle_anim_render_blend(toggle_anim_t *w, uint32_t now, bool use_or_blend)
 // ============================================================================
 
 /**
- * @brief Draw the steady frame for one-shot animation
+ * @brief Draw the steady frame for one-shot animation with blend mode
  * @param w One-shot controller instance
+ * @param use_or_blend true for OR blending (no clear), false for opaque (clear first)
  */
-static inline void oneshot_draw_steady(const oneshot_anim_t *w) {
+static inline void oneshot_draw_steady_blend(const oneshot_anim_t *w, bool use_or_blend) {
     if (!w->seq || !w->seq->count) return;
 
     const slice_t *steady = w->steady_at_end
         ? &w->seq->frames[w->seq->count - 1]  // Last frame
         : &w->seq->frames[0];                 // First frame
 
-    clear_rect(w->x, w->y, steady->width, (uint8_t)(steady->pages * 8));
+    if (!use_or_blend) {
+        clear_rect(w->x, w->y, steady->width, (uint8_t)(steady->pages * 8));
+    }
     draw_slice_px(steady, w->x, w->y);
+}
+
+/**
+ * @brief Draw the steady frame for one-shot animation
+ * @param w One-shot controller instance
+ */
+static inline void oneshot_draw_steady(const oneshot_anim_t *w) {
+    oneshot_draw_steady_blend(w, false);
 }
 
 void oneshot_anim_init(oneshot_anim_t *w, const slice_seq_t *seq,
@@ -417,30 +428,38 @@ void oneshot_anim_trigger(oneshot_anim_t *w, uint32_t now) {
 }
 
 bool oneshot_anim_render(oneshot_anim_t *w, uint32_t now) {
+    return oneshot_anim_render_blend(w, now, false);
+}
+
+bool oneshot_anim_render_blend(oneshot_anim_t *w, uint32_t now, bool use_or_blend) {
     switch (w->phase) {
         case ONESHOT_IDLE:
             // Draw steady frame and stay idle
-            oneshot_draw_steady(w);
+            oneshot_draw_steady_blend(w, use_or_blend);
             return false;
 
         case ONESHOT_BOOT: {
-            anim_result_t r = animator_step_and_draw(&w->anim, w->x, w->y, now);
+            anim_result_t r = use_or_blend
+                ? animator_step_and_draw_blend(&w->anim, w->x, w->y, now)
+                : animator_step_and_draw(&w->anim, w->x, w->y, now);
             if (r == ANIM_DONE_AT_END) {
                 // Boot animation completed
                 w->phase = ONESHOT_IDLE;
                 w->boot_done = true;
-                oneshot_draw_steady(w);
+                oneshot_draw_steady_blend(w, use_or_blend);
                 return true;  // Animation just completed
             }
             return false;
         }
 
         case ONESHOT_TRIGGERED: {
-            anim_result_t r = animator_step_and_draw(&w->anim, w->x, w->y, now);
+            anim_result_t r = use_or_blend
+                ? animator_step_and_draw_blend(&w->anim, w->x, w->y, now)
+                : animator_step_and_draw(&w->anim, w->x, w->y, now);
             if (r == ANIM_DONE_AT_END) {
                 // Triggered animation completed
                 w->phase = ONESHOT_IDLE;
-                oneshot_draw_steady(w);
+                oneshot_draw_steady_blend(w, use_or_blend);
                 return true;  // Animation just completed
             }
             return false;

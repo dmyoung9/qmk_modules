@@ -440,6 +440,19 @@ void oneshot_anim_trigger(oneshot_anim_t *w, uint32_t now);
 bool oneshot_anim_render(oneshot_anim_t *w, uint32_t now);
 
 /**
+ * @brief Advance and render the one-shot controller with blend mode
+ *
+ * Same as oneshot_anim_render but with optional OR blending support.
+ * When use_or_blend is true, frames are drawn without clearing background.
+ *
+ * @param w One-shot controller instance
+ * @param now Current timestamp from timer_read32()
+ * @param use_or_blend true for OR blending (no clear), false for opaque (clear first)
+ * @return true if animation just completed this frame, false otherwise
+ */
+bool oneshot_anim_render_blend(oneshot_anim_t *w, uint32_t now, bool use_or_blend);
+
+/**
  * @brief Check if one-shot animation is currently running
  *
  * @param w One-shot controller instance
