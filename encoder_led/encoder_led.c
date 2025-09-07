@@ -4,6 +4,13 @@
 #include QMK_KEYBOARD_H
 #include "transactions.h"
 
+#ifndef ENCODER_LED_CW_RGB
+#define ENCODER_LED_CW_RGB 0, 0xff, 0
+#endif
+#ifndef ENCODER_LED_CCW_RGB
+#define ENCODER_LED_CCW_RGB 0x0ff, 0, 0
+#endif
+
 static bool g_encoder_clockwise                  = false;
 static bool g_encoder_led_sync_split_initialized = false;
 
@@ -44,9 +51,9 @@ bool rgb_matrix_indicators_encoder_led(void) {
     if (!is_keyboard_master()) {
         if (last_encoder_activity_elapsed() < 500) {
             if (g_encoder_clockwise) {
-                rgb_matrix_set_color(ENCODER_LED_INDEX, 0, 0xff, 0);
+                rgb_matrix_set_color(ENCODER_LED_INDEX, ENCODER_LED_CW_RGB);
             } else {
-                rgb_matrix_set_color(ENCODER_LED_INDEX, 0xff, 0, 0);
+                rgb_matrix_set_color(ENCODER_LED_INDEX, ENCODER_LED_CCW_RGB);
             }
         }
     }
