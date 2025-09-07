@@ -1,7 +1,7 @@
-#include "wpm_stats.h"
-#include "wpm.h"
-#include "timer.h"
+#include QMK_KEYBOARD_H
 #include "transactions.h"
+
+#include "wpm_stats.h"
 
 #ifdef OLED_ENABLE
 #include "oled_driver.h"
@@ -19,10 +19,6 @@
 #ifndef WPM_BAR_HEIGHT
 #define WPM_BAR_HEIGHT 28
 #endif
-
-// Include the bar graph functionality
-// Note: We'll need to copy the bar graph implementation into this module
-// or make it a separate reusable component
 #endif
 
 // Internal state
@@ -53,8 +49,19 @@ void wpm_stats_init(void) {
     g_wpm_count = 0;
 }
 
-void wpm_stats_task(void) {
-    if (!g_initialized) return;
+void keyboard_post_init_wpm_stats(void) {
+    wpm_stats_init();
+#ifdef SPLIT_KEYBOARD
+    wpm_stats_init_split_sync();
+#endif
+#ifdef OLED_ENABLE
+    wpm_stats_oled_init();
+#endif
+}
+
+
+void matrix_scan_wpm_stats(void) {
+    if (!g_initialized || !is_keyboard_master()) return;
 
     // Update WPM stats periodically
     static uint32_t last = 0;
@@ -83,13 +90,6 @@ void wpm_stats_task(void) {
     }
 }
 
-void wpm_stats_on_keyevent(keyrecord_t *record) {
-    if (!g_initialized || !record->event.pressed) return;
-
-    // QMK's built-in WPM system handles the keypress automatically
-    // We just need to make sure it's enabled
-}
-
 bool wpm_stats_get(wpm_stats_t *stats) {
     if (!stats || !g_initialized) {
         return false;
@@ -111,7 +111,6 @@ uint16_t wpm_stats_get_avg(void) {
     if (!g_initialized) return 0;
 
     // On slave side, use synced data from master
-    extern bool is_keyboard_master(void);
     if (!is_keyboard_master()) {
         return g_slave_wpm_data.average_wpm;
     }
@@ -123,7 +122,6 @@ uint16_t wpm_stats_get_max(void) {
     if (!g_initialized) return 0;
 
     // On slave side, use synced data from master
-    extern bool is_keyboard_master(void);
     if (!is_keyboard_master()) {
         return g_slave_wpm_data.session_max_wpm;
     }
@@ -158,7 +156,7 @@ void wpm_stats_init_split_sync(void) {
     g_split_sync_initialized = true;
 }
 
-void wpm_stats_housekeeping_task(void) {
+void housekeeping_task_wpm_stats(void) {
     if (!g_initialized) return;
 
     if (is_keyboard_master()) {

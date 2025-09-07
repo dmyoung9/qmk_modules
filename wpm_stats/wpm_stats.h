@@ -49,16 +49,9 @@ void wpm_stats_init(void);
  * Updates WPM tracking and statistics.
  * Call this from your keyboard's matrix_scan_user() or similar.
  */
-void wpm_stats_task(void);
+void matrix_scan_wpm_stats(void);
 
-/**
- * @brief Record a key event
- *
- * Call this from process_record_user() to track key presses for WPM.
- *
- * @param record The QMK key record
- */
-void wpm_stats_on_keyevent(keyrecord_t *record);
+void keyboard_post_init_wpm_stats(void);
 
 /**
  * @brief Get current WPM statistics
@@ -110,7 +103,7 @@ void wpm_stats_init_split_sync(void);
  * Call this from housekeeping_task_user() to handle periodic sync between
  * master and slave sides of a split keyboard.
  */
-void wpm_stats_housekeeping_task(void);
+void housekeeping_task_wpm_stats(void);
 
 #ifdef OLED_ENABLE
 /**
