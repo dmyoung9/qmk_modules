@@ -32,18 +32,11 @@ bool process_record_encoder_ledmap(uint16_t keycode, keyrecord_t *record) {
 #endif
 
     if (is_keyboard_master()) {
-        const bool previous = g_encoder_clockwise;
         if (record->event.type == ENCODER_CW_EVENT) {
             g_encoder_clockwise = true;
         } else if (record->event.type == ENCODER_CCW_EVENT) {
             g_encoder_clockwise = false;
         }
-
-#ifdef SPLIT_KEYBOARD
-        if (previous != g_encoder_clockwise) {
-            transaction_rpc_send(ENCODER_LED_SYNC, sizeof(bool), &g_encoder_clockwise);
-        }
-#endif
     }
 
     return true;
@@ -66,3 +59,13 @@ bool rgb_matrix_indicators_encoder_ledmap(void) {
 
     return true;
 }
+
+#ifdef SPLIT_KEYBOARD
+void housekeeping_task_encoder_ledmap(void) {
+    if (!g_encoder_led_sync_split_initialized) return;
+
+    if (is_keyboard_master()) {
+        transaction_rpc_send(ENCODER_LED_SYNC, sizeof(bool), &g_encoder_clockwise);
+    }
+}
+#endif
