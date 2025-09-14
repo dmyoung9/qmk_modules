@@ -1,4 +1,8 @@
 {
     "module_name": "encoder_ledmap",
-    "maintainer": "dmyoung9"
+    "maintainer": "dmyoung9",
+    "features": {
+        "encoder_map": true,
+        "rgb_matrix": true
+    }
 }
