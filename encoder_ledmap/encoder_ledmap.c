@@ -42,13 +42,14 @@ bool process_record_encoder_ledmap(uint16_t keycode, keyrecord_t *record) {
 
 bool rgb_matrix_indicators_encoder_ledmap(void) {
     if (!g_encoder_led_sync_split_initialized) return true;
+#endif
 
     if (!is_keyboard_master()) {
         if (last_encoder_activity_elapsed() < ENCODER_LED_TIMEOUT) {
             if (g_encoder_clockwise) {
-                rgb_matrix_set_color(ENCODER_LED_INDEX, ENCODER_LED_CW_RGB);
+                rgb_matrix_set_color(encoder_leds[0], ENCODER_LED_CW_RGB);
             } else {
-                rgb_matrix_set_color(ENCODER_LED_INDEX, ENCODER_LED_CCW_RGB);
+                rgb_matrix_set_color(encoder_leds[0], ENCODER_LED_CCW_RGB);
             }
         }
     }
