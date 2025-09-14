@@ -4,12 +4,7 @@
 #include QMK_KEYBOARD_H
 #include "transactions.h"
 
-#ifndef ENCODER_LED_CW_RGB
-#define ENCODER_LED_CW_RGB 0, 0xff, 0
-#endif
-#ifndef ENCODER_LED_CCW_RGB
-#define ENCODER_LED_CCW_RGB 0x0ff, 0, 0
-#endif
+#include "dmyoung9/encoder_ledmap.h"
 
 static bool g_encoder_clockwise                  = false;
 static bool g_encoder_led_sync_split_initialized = false;
@@ -49,7 +44,7 @@ bool rgb_matrix_indicators_encoder_ledmap(void) {
     if (!g_encoder_led_sync_split_initialized) return true;
 
     if (!is_keyboard_master()) {
-        if (last_encoder_activity_elapsed() < 500) {
+        if (last_encoder_activity_elapsed() < ENCODER_LED_TIMEOUT) {
             if (g_encoder_clockwise) {
                 rgb_matrix_set_color(ENCODER_LED_INDEX, ENCODER_LED_CW_RGB);
             } else {
