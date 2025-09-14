@@ -19,14 +19,14 @@ static void encoder_led_sync_slave_handler(uint8_t in_buflen, const void *in_dat
     g_encoder_clockwise  = clockwise;
 }
 
-void keyboard_post_init_encoder_led(void) {
+void keyboard_post_init_encoder_ledmap(void) {
     if (!g_encoder_led_sync_split_initialized) {
         transaction_register_rpc(ENCODER_LED_SYNC, encoder_led_sync_slave_handler);
         g_encoder_led_sync_split_initialized = true;
     }
 }
 
-bool process_record_encoder_led(uint16_t keycode, keyrecord_t *record) {
+bool process_record_encoder_ledmap(uint16_t keycode, keyrecord_t *record) {
     if (!g_encoder_led_sync_split_initialized) return true;
 
     if (is_keyboard_master()) {
@@ -45,7 +45,7 @@ bool process_record_encoder_led(uint16_t keycode, keyrecord_t *record) {
     return true;
 }
 
-bool rgb_matrix_indicators_encoder_led(void) {
+bool rgb_matrix_indicators_encoder_ledmap(void) {
     if (!g_encoder_led_sync_split_initialized) return true;
 
     if (!is_keyboard_master()) {
