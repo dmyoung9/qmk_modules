@@ -2,11 +2,15 @@
 #include <stdint.h>
 
 #include QMK_KEYBOARD_H
+#ifdef SPLIT_KEYBOARD
 #include "transactions.h"
+#endif
 
 #include "dmyoung9/encoder_ledmap.h"
 
 static bool g_encoder_clockwise                  = false;
+
+#ifdef SPLIT_KEYBOARD
 static bool g_encoder_led_sync_split_initialized = false;
 
 static void encoder_led_sync_slave_handler(uint8_t in_buflen, const void *in_data, uint8_t out_buflen, void *out_data) {
@@ -20,9 +24,12 @@ void keyboard_post_init_encoder_ledmap(void) {
         g_encoder_led_sync_split_initialized = true;
     }
 }
+#endif
 
 bool process_record_encoder_ledmap(uint16_t keycode, keyrecord_t *record) {
+#ifdef SPLIT_KEYBOARD
     if (!g_encoder_led_sync_split_initialized) return true;
+#endif
 
     if (is_keyboard_master()) {
         const bool previous = g_encoder_clockwise;
@@ -32,15 +39,18 @@ bool process_record_encoder_ledmap(uint16_t keycode, keyrecord_t *record) {
             g_encoder_clockwise = false;
         }
 
+#ifdef SPLIT_KEYBOARD
         if (previous != g_encoder_clockwise) {
             transaction_rpc_send(ENCODER_LED_SYNC, sizeof(bool), &g_encoder_clockwise);
         }
+#endif
     }
 
     return true;
 }
 
 bool rgb_matrix_indicators_encoder_ledmap(void) {
+#ifdef SPLIT_KEYBOARD
     if (!g_encoder_led_sync_split_initialized) return true;
 #endif
 
