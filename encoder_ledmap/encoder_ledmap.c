@@ -65,10 +65,6 @@ static int encoder_ledmap_get_rgb(color_t color, rgb_t *rgb) {
 }
 
 bool rgb_matrix_indicators_encoder_ledmap(void) {
-#ifdef SPLIT_KEYBOARD
-    if (!g_encoder_ledmap_sync_initialized) return true;
-#endif
-
     if (!is_keyboard_master()) {
         if (last_encoder_activity_elapsed() < ENCODER_LED_TIMEOUT) {
             for (uint8_t encoder_index = 0; encoder_index < NUM_ENCODERS; encoder_index++) {
