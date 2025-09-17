@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #include QMK_KEYBOARD_H
 #ifdef SPLIT_KEYBOARD
@@ -8,14 +9,15 @@
 
 #include "dmyoung9/encoder_ledmap.h"
 
-static bool g_encoder_clockwise                  = false;
+static encoder_state_t g_encoder_state[NUM_ENCODERS];
 
 #ifdef SPLIT_KEYBOARD
 static bool g_encoder_led_sync_split_initialized = false;
 
 static void encoder_led_sync_slave_handler(uint8_t in_buflen, const void *in_data, uint8_t out_buflen, void *out_data) {
-    const bool clockwise = *(const bool *)in_data;
-    g_encoder_clockwise  = clockwise;
+    if (in_buflen >= sizeof(g_encoder_state)) {
+        memcpy(g_encoder_state, in_data, sizeof(g_encoder_state));
+    }
 }
 
 void keyboard_post_init_encoder_ledmap(void) {
@@ -32,14 +34,42 @@ bool process_record_encoder_ledmap(uint16_t keycode, keyrecord_t *record) {
 #endif
 
     if (is_keyboard_master()) {
-        if (record->event.type == ENCODER_CW_EVENT) {
-            g_encoder_clockwise = true;
-        } else if (record->event.type == ENCODER_CCW_EVENT) {
-            g_encoder_clockwise = false;
+        if (record->event.type == ENCODER_CCW_EVENT || record->event.type == ENCODER_CW_EVENT) {
+            const uint8_t encoder_index = record->event.key.col;
+            if (encoder_index < NUM_ENCODERS) {
+                g_encoder_state[encoder_index].clockwise = (record->event.type == ENCODER_CW_EVENT);
+                g_encoder_state[encoder_index].layer = get_highest_layer(layer_state);
+            }
         }
     }
 
     return true;
+}
+
+// Helper function to convert color_t to rgb_t (based on indicators module implementation)
+static int encoder_ledmap_get_rgb(color_t color, rgb_t *rgb) {
+    switch (color.type) {
+        case COLOR_TYPE_RGB:
+            *rgb = color.rgb;
+            break;
+
+        case COLOR_TYPE_HSV:
+            *rgb = hsv_to_rgb(color.hsv);
+            break;
+
+        case COLOR_TYPE_HUE:
+            *rgb = hsv_to_rgb((hsv_t){
+                .h = color.hsv.h,
+                .s = rgb_matrix_get_sat(),
+                .v = rgb_matrix_get_val(),
+            });
+            break;
+
+        default:
+            return -1; // Invalid color type
+    }
+
+    return 0; // Success
 }
 
 bool rgb_matrix_indicators_encoder_ledmap(void) {
@@ -49,10 +79,26 @@ bool rgb_matrix_indicators_encoder_ledmap(void) {
 
     if (!is_keyboard_master()) {
         if (last_encoder_activity_elapsed() < ENCODER_LED_TIMEOUT) {
-            if (g_encoder_clockwise) {
-                rgb_matrix_set_color(encoder_leds[0], ENCODER_LED_CW_RGB);
-            } else {
-                rgb_matrix_set_color(encoder_leds[0], ENCODER_LED_CCW_RGB);
+            for (uint8_t encoder_index = 0; encoder_index < NUM_ENCODERS; encoder_index++) {
+                // Get the layer and direction from the encoder state
+                const uint8_t layer = g_encoder_state[encoder_index].layer;
+                const bool clockwise = g_encoder_state[encoder_index].clockwise;
+
+                // Validate layer bounds
+                if (layer >= encoder_ledmap_layer_count()) {
+                    continue; // Skip this encoder if layer is out of bounds
+                }
+
+                // Get the color from the encoder ledmap
+                color_t color = color_at_encoder_ledmap_location(layer, encoder_index, clockwise);
+
+                // Convert color_t to rgb_t
+                rgb_t rgb;
+                if (encoder_ledmap_get_rgb(color, &rgb) == 0) {
+                    // Conversion successful, set the LED color
+                    rgb_matrix_set_color(encoder_leds[encoder_index], rgb.r, rgb.g, rgb.b);
+                }
+                // If conversion fails, skip setting the LED color for this encoder
             }
         }
     }
@@ -65,7 +111,7 @@ void housekeeping_task_encoder_ledmap(void) {
     if (!g_encoder_led_sync_split_initialized) return;
 
     if (is_keyboard_master()) {
-        transaction_rpc_send(ENCODER_LED_SYNC, sizeof(bool), &g_encoder_clockwise);
+        transaction_rpc_send(ENCODER_LED_SYNC, sizeof(g_encoder_state), &g_encoder_state);
     }
 }
 #endif
