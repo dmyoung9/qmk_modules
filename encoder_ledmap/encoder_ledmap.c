@@ -58,10 +58,10 @@ static int encoder_ledmap_get_rgb(color_t color, rgb_t *rgb) {
             break;
 
         default:
-            return -1; // Invalid color type
+            return -1;
     }
 
-    return 0; // Success
+    return 0;
 }
 
 bool rgb_matrix_indicators_encoder_ledmap(void) {
@@ -72,25 +72,19 @@ bool rgb_matrix_indicators_encoder_ledmap(void) {
     if (!is_keyboard_master()) {
         if (last_encoder_activity_elapsed() < ENCODER_LED_TIMEOUT) {
             for (uint8_t encoder_index = 0; encoder_index < NUM_ENCODERS; encoder_index++) {
-                // Get the layer and direction from the encoder state
                 const uint8_t layer = g_encoder_state[encoder_index].layer;
                 const bool clockwise = g_encoder_state[encoder_index].clockwise;
 
-                // Validate layer bounds
                 if (layer >= encoder_ledmap_layer_count()) {
-                    continue; // Skip this encoder if layer is out of bounds
+                    continue;
                 }
 
-                // Get the color from the encoder ledmap
                 color_t color = color_at_encoder_ledmap_location(layer, encoder_index, clockwise);
-
-                // Convert color_t to rgb_t
                 rgb_t rgb;
+
                 if (encoder_ledmap_get_rgb(color, &rgb) == 0) {
-                    // Conversion successful, set the LED color
                     rgb_matrix_set_color(encoder_leds[encoder_index], rgb.r, rgb.g, rgb.b);
                 }
-                // If conversion fails, skip setting the LED color for this encoder
             }
         }
     }
