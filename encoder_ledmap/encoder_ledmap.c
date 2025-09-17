@@ -27,13 +27,11 @@ void keyboard_post_init_encoder_ledmap(void) {
 #endif
 
 bool process_record_encoder_ledmap(uint16_t keycode, keyrecord_t *record) {
-    if (is_keyboard_master()) {
-        if (record->event.type == ENCODER_CCW_EVENT || record->event.type == ENCODER_CW_EVENT) {
-            const uint8_t encoder_index = record->event.key.col;
-            if (encoder_index < NUM_ENCODERS) {
-                g_encoder_state[encoder_index].clockwise = (record->event.type == ENCODER_CW_EVENT);
-                g_encoder_state[encoder_index].layer = get_highest_layer(layer_state);
-            }
+    if (record->event.type == ENCODER_CCW_EVENT || record->event.type == ENCODER_CW_EVENT) {
+        const uint8_t encoder_index = record->event.key.col;
+        if (encoder_index < NUM_ENCODERS) {
+            g_encoder_state[encoder_index].clockwise = (record->event.type == ENCODER_CW_EVENT);
+            g_encoder_state[encoder_index].layer = get_highest_layer(layer_state);
         }
     }
 
