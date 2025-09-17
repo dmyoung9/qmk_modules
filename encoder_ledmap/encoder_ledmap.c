@@ -1,17 +1,15 @@
 #include <stdbool.h>
 #include <stdint.h>
-#include <string.h>
 
-#include QMK_KEYBOARD_H
-#ifdef SPLIT_KEYBOARD
-#include "transactions.h"
-#endif
+#include "quantum.h"
 
 #include "dmyoung9/encoder_ledmap.h"
 
 static encoder_state_t g_encoder_state[NUM_ENCODERS];
 
 #ifdef SPLIT_KEYBOARD
+#include "transactions.h"
+
 static bool g_encoder_led_sync_split_initialized = false;
 
 static void encoder_led_sync_slave_handler(uint8_t in_buflen, const void *in_data, uint8_t out_buflen, void *out_data) {
