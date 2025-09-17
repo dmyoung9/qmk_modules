@@ -27,10 +27,6 @@ void keyboard_post_init_encoder_ledmap(void) {
 #endif
 
 bool process_record_encoder_ledmap(uint16_t keycode, keyrecord_t *record) {
-#ifdef SPLIT_KEYBOARD
-    if (!g_encoder_led_sync_split_initialized) return true;
-#endif
-
     if (is_keyboard_master()) {
         if (record->event.type == ENCODER_CCW_EVENT || record->event.type == ENCODER_CW_EVENT) {
             const uint8_t encoder_index = record->event.key.col;
