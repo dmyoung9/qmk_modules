@@ -10,19 +10,19 @@ static encoder_state_t g_encoder_state[NUM_ENCODERS];
 #ifdef SPLIT_KEYBOARD
 #include "transactions.h"
 
-static bool g_encoder_led_sync_split_initialized = false;
+static bool g_encoder_ledmap_sync_initialized = false;
 
-static void encoder_led_sync_slave_handler(uint8_t in_buflen, const void *in_data, uint8_t out_buflen, void *out_data) {
+static void encoder_ledmap_sync_slave_handler(uint8_t in_buflen, const void *in_data, uint8_t out_buflen, void *out_data) {
     if (in_buflen >= sizeof(g_encoder_state)) {
         memcpy(g_encoder_state, in_data, sizeof(g_encoder_state));
     }
 }
 
 void keyboard_post_init_encoder_ledmap(void) {
-    if (!g_encoder_led_sync_split_initialized) {
-        transaction_register_rpc(ENCODER_LED_SYNC, encoder_led_sync_slave_handler);
-        g_encoder_led_sync_split_initialized = true;
-    }
+    if (g_encoder_ledmap_sync_initialized) return;
+
+    transaction_register_rpc(ENCODER_LEDMAP_SYNC, encoder_ledmap_sync_slave_handler);
+    g_encoder_ledmap_sync_initialized = true;
 }
 #endif
 
@@ -66,7 +66,7 @@ static int encoder_ledmap_get_rgb(color_t color, rgb_t *rgb) {
 
 bool rgb_matrix_indicators_encoder_ledmap(void) {
 #ifdef SPLIT_KEYBOARD
-    if (!g_encoder_led_sync_split_initialized) return true;
+    if (!g_encoder_ledmap_sync_initialized) return true;
 #endif
 
     if (!is_keyboard_master()) {
@@ -100,10 +100,10 @@ bool rgb_matrix_indicators_encoder_ledmap(void) {
 
 #ifdef SPLIT_KEYBOARD
 void housekeeping_task_encoder_ledmap(void) {
-    if (!g_encoder_led_sync_split_initialized) return;
+    if (!g_encoder_ledmap_sync_initialized) return;
 
     if (is_keyboard_master()) {
-        transaction_rpc_send(ENCODER_LED_SYNC, sizeof(g_encoder_state), &g_encoder_state);
+        transaction_rpc_send(ENCODER_LEDMAP_SYNC, sizeof(g_encoder_state), &g_encoder_state);
     }
 }
 #endif
