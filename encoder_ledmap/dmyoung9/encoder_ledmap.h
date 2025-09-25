@@ -32,9 +32,9 @@
 /**
  * @brief Encoder state structure to track direction, layer, and activity information
  */
-typedef struct {
-    bool clockwise;         ///< True if last rotation was clockwise, false for counterclockwise
-    uint8_t layer;          ///< Active layer when the encoder event was processed
+typedef struct __attribute__((packed)) {
+    uint8_t clockwise : 1;
+    uint8_t layer : 7;
 } encoder_state_t;
 
 extern const uint8_t encoder_leds[NUM_ENCODERS];
