@@ -65,23 +65,24 @@ static int encoder_ledmap_get_rgb(color_t color, rgb_t *rgb) {
 }
 
 bool rgb_matrix_indicators_encoder_ledmap(void) {
-    if (!is_keyboard_master()) {
-        if (last_encoder_activity_elapsed() < ENCODER_LED_TIMEOUT) {
-            for (uint8_t encoder_index = 0; encoder_index < NUM_ENCODERS; encoder_index++) {
-                const uint8_t layer = g_encoder_state[encoder_index].layer;
-                const bool clockwise = g_encoder_state[encoder_index].clockwise;
+    for (uint8_t encoder_index = 0; encoder_index < NUM_ENCODERS; encoder_index++) {
+        const uint8_t layer     = g_encoder_state[encoder_index].layer;
+        const bool    clockwise = g_encoder_state[encoder_index].clockwise;
 
-                if (layer >= encoder_ledmap_layer_count()) {
-                    continue;
-                }
+        if (last_encoder_activity_elapsed() >= ENCODER_LED_TIMEOUT) {
+            rgb_matrix_set_color(encoder_leds[encoder_index], 0, 0, 0);
+            continue;
+        }
 
-                color_t color = color_at_encoder_ledmap_location(layer, encoder_index, clockwise);
-                rgb_t rgb;
+        if (layer >= encoder_ledmap_layer_count()) {
+            continue;
+        }
 
-                if (encoder_ledmap_get_rgb(color, &rgb) == 0) {
-                    rgb_matrix_set_color(encoder_leds[encoder_index], rgb.r, rgb.g, rgb.b);
-                }
-            }
+        color_t color = color_at_encoder_ledmap_location(layer, encoder_index, clockwise);
+        rgb_t   rgb;
+
+        if (encoder_ledmap_get_rgb(color, &rgb) == 0) {
+            rgb_matrix_set_color(encoder_leds[encoder_index], rgb.r, rgb.g, rgb.b);
         }
     }
 
