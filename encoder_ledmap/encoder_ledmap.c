@@ -8,7 +8,7 @@
 static encoder_state_t g_encoder_state[NUM_ENCODERS];
 
 #ifdef SPLIT_KEYBOARD
-#include "transactions.h"
+#    include "transactions.h"
 
 static bool g_encoder_ledmap_sync_initialized = false;
 
@@ -30,8 +30,8 @@ bool process_record_encoder_ledmap(uint16_t keycode, keyrecord_t *record) {
     if (record->event.type == ENCODER_CCW_EVENT || record->event.type == ENCODER_CW_EVENT) {
         const uint8_t encoder_index = record->event.key.col;
         if (encoder_index < NUM_ENCODERS) {
-            g_encoder_state[encoder_index].clockwise = (record->event.type == ENCODER_CW_EVENT);
-            g_encoder_state[encoder_index].layer = get_highest_layer(layer_state);
+            g_encoder_state[encoder_index].clockwise     = (record->event.type == ENCODER_CW_EVENT) ? 1 : 0;
+            g_encoder_state[encoder_index].layer         = get_highest_layer(layer_state);
         }
     }
 
