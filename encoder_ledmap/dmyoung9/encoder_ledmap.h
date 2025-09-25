@@ -35,6 +35,7 @@
 typedef struct __attribute__((packed)) {
     uint8_t  clockwise : 1;
     uint8_t  layer : 7;
+    uint16_t last_activity;
 } encoder_state_t;
 
 extern const uint8_t         encoder_leds[NUM_ENCODERS];

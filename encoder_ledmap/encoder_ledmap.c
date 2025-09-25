@@ -32,6 +32,7 @@ bool process_record_encoder_ledmap(uint16_t keycode, keyrecord_t *record) {
         if (encoder_index < NUM_ENCODERS) {
             g_encoder_state[encoder_index].clockwise     = (record->event.type == ENCODER_CW_EVENT) ? 1 : 0;
             g_encoder_state[encoder_index].layer         = get_highest_layer(layer_state);
+            g_encoder_state[encoder_index].last_activity = timer_read();
         }
     }
 
@@ -69,7 +70,10 @@ bool rgb_matrix_indicators_encoder_ledmap(void) {
         const uint8_t layer     = g_encoder_state[encoder_index].layer;
         const bool    clockwise = g_encoder_state[encoder_index].clockwise;
 
-        if (last_encoder_activity_elapsed() >= ENCODER_LED_TIMEOUT) {
+        const uint16_t last_activity = g_encoder_state[encoder_index].last_activity;
+        const uint16_t elapsed       = timer_elapsed(last_activity);
+
+        if (elapsed >= ENCODER_LED_TIMEOUT) {
             rgb_matrix_set_color(encoder_leds[encoder_index], 0, 0, 0);
             continue;
         }
