@@ -1,8 +1,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "quantum.h"
-
 #include "dmyoung9/encoder_ledmap.h"
 
 static encoder_state_t g_encoder_state[NUM_ENCODERS];
@@ -39,32 +37,6 @@ bool process_record_encoder_ledmap(uint16_t keycode, keyrecord_t *record) {
     return true;
 }
 
-// Helper function to convert color_t to rgb_t (based on indicators module implementation)
-static int encoder_ledmap_get_rgb(color_t color, rgb_t *rgb) {
-    switch (color.type) {
-        case COLOR_TYPE_RGB:
-            *rgb = color.rgb;
-            break;
-
-        case COLOR_TYPE_HSV:
-            *rgb = hsv_to_rgb(color.hsv);
-            break;
-
-        case COLOR_TYPE_HUE:
-            *rgb = hsv_to_rgb((hsv_t){
-                .h = color.hsv.h,
-                .s = rgb_matrix_get_sat(),
-                .v = rgb_matrix_get_val(),
-            });
-            break;
-
-        default:
-            return -1;
-    }
-
-    return 0;
-}
-
 bool rgb_matrix_indicators_encoder_ledmap(void) {
     for (uint8_t encoder_index = 0; encoder_index < NUM_ENCODERS; encoder_index++) {
         const uint8_t layer     = g_encoder_state[encoder_index].layer;
@@ -85,7 +57,7 @@ bool rgb_matrix_indicators_encoder_ledmap(void) {
         color_t color = color_at_encoder_ledmap_location(layer, encoder_index, clockwise);
         rgb_t   rgb;
 
-        if (encoder_ledmap_get_rgb(color, &rgb) == 0) {
+        if (get_rgb(color, &rgb) == 0) {
             rgb_matrix_set_color(encoder_leds[encoder_index], rgb.r, rgb.g, rgb.b);
         }
     }

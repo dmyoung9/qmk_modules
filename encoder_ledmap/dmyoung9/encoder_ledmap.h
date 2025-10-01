@@ -23,10 +23,13 @@
 #endif
 
 #if defined(COMMUNITY_MODULE_INDICATORS_ENABLE)
-#    include "elpekenin/indicators.h"
 #    pragma message "Enable indicators after ledmap, otherwise you will overwrite them."
+#endif
+
+#if !defined(COMMUNITY_MODULE_COLORS_ENABLE)
+#    error Must enable elpekenin/colors
 #else
-#    error Must enable 'elpekenin/indicators'
+#    include "elpekenin/colors.h"
 #endif
 
 /**
