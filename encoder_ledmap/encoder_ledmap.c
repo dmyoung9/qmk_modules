@@ -57,6 +57,17 @@ bool rgb_matrix_indicators_encoder_ledmap(void) {
         color_t color = color_at_encoder_ledmap_location(layer, encoder_index, clockwise);
         rgb_t   rgb;
 
+        if (color.type == COLOR_TYPE_TRNS) {
+            for (uint8_t i = layer - 1; i > 0; i--) {
+                color = color_at_encoder_ledmap_location(i, encoder_index, clockwise);
+                if (color.type != COLOR_TYPE_TRNS) break;
+            }
+
+            if (color.type == COLOR_TYPE_TRNS) {
+                continue;
+            }
+        }
+
         if (get_rgb(color, &rgb) == 0) {
             rgb_matrix_set_color(encoder_leds[encoder_index], rgb.r, rgb.g, rgb.b);
         }
