@@ -1,8 +1,0 @@
-{
-    "module_name": "rgb_activity",
-    "maintainer": "dmyoung9",
-    "license": "GPL-2.0-or-later",
-    "features": {
-        "rgb_matrix": true
-    }
-}

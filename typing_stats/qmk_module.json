@@ -1,9 +1,0 @@
-{
-    "module_name": "typing_stats",
-    "maintainer": "dmyoung9",
-    "features": {
-        "wpm": true,
-        "eeprom": true,
-        "console": true
-    }
-}
