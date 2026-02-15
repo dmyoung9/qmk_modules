@@ -35,6 +35,8 @@
 typedef enum {
     ANIM_ONESHOT = 0,       ///< Run once forward, return to steady state
     ANIM_OUTBACK,           ///< Run forward, then reverse back to start
+    ANIM_LOOP,              ///< Loop forward continuously
+    ANIM_PING_PONG,         ///< Loop forward then reverse continuously
     ANIM_TOGGLE,            ///< Binary on/off state with smooth transitions
     ANIM_BOOTREV,           ///< Boot forward, triggered reverse-out-back
     ANIM_LAYER_TRANSITION   ///< Exclusive state transitions with exit/enter
@@ -209,6 +211,18 @@ static inline bool unified_anim_boot_done(const unified_anim_t *w) {
  */
 #define UNIFIED_OUTBACK_CONFIG(seq_ptr, x_pos, y_pos, steady_frame, run_boot) \
     { (seq_ptr), ANIM_OUTBACK, (steady_frame), BLEND_OPAQUE, (x_pos), (y_pos), (run_boot), NULL, 0 }
+
+/**
+ * @brief Create loop animation configuration
+ */
+#define UNIFIED_LOOP_CONFIG(seq_ptr, x_pos, y_pos, steady_frame, blend_mode) \
+    { (seq_ptr), ANIM_LOOP, (steady_frame), (blend_mode), (x_pos), (y_pos), false, NULL, 0 }
+
+/**
+ * @brief Create ping-pong animation configuration
+ */
+#define UNIFIED_PING_PONG_CONFIG(seq_ptr, x_pos, y_pos, steady_frame, blend_mode) \
+    { (seq_ptr), ANIM_PING_PONG, (steady_frame), (blend_mode), (x_pos), (y_pos), false, NULL, 0 }
 
 /**
  * @brief Create toggle animation configuration

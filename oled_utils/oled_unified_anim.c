@@ -149,6 +149,60 @@ static bool handle_outback_behavior(unified_anim_t *w, uint32_t now) {
 }
 
 /**
+ * @brief Handle loop animation behavior
+ */
+static bool handle_loop_behavior(unified_anim_t *w, uint32_t now) {
+    switch (w->phase) {
+        case PHASE_IDLE:
+            draw_steady_frame(w);
+            return false;
+
+        case PHASE_FORWARD: {
+            anim_result_t r = render_animation_frame(w, now);
+            if (r == ANIM_DONE_AT_END) {
+                animator_start(&w->anim, get_current_sequence(w), true, now);
+            }
+            return false;
+        }
+
+        default:
+            return false;
+    }
+}
+
+/**
+ * @brief Handle ping-pong animation behavior
+ */
+static bool handle_ping_pong_behavior(unified_anim_t *w, uint32_t now) {
+    switch (w->phase) {
+        case PHASE_IDLE:
+            draw_steady_frame(w);
+            return false;
+
+        case PHASE_FORWARD: {
+            anim_result_t r = render_animation_frame(w, now);
+            if (r == ANIM_DONE_AT_END) {
+                animator_start(&w->anim, get_current_sequence(w), false, now);
+                w->phase = PHASE_REVERSE;
+            }
+            return false;
+        }
+
+        case PHASE_REVERSE: {
+            anim_result_t r = render_animation_frame(w, now);
+            if (r == ANIM_DONE_AT_START) {
+                animator_start(&w->anim, get_current_sequence(w), true, now);
+                w->phase = PHASE_FORWARD;
+            }
+            return false;
+        }
+
+        default:
+            return false;
+    }
+}
+
+/**
  * @brief Handle toggle animation behavior
  */
 static bool handle_toggle_behavior(unified_anim_t *w, uint32_t now) {
@@ -250,6 +304,17 @@ void unified_anim_init(unified_anim_t *w, const unified_anim_config_t *cfg,
     w->desired_on = w->visible_on;
     w->last_trigger = now;
     
+    // Start continuous animations immediately
+    if (cfg->behavior == ANIM_LOOP || cfg->behavior == ANIM_PING_PONG) {
+        const slice_seq_t *seq = get_current_sequence(w);
+        if (seq && seq->count) {
+            animator_start(&w->anim, seq, true, now);
+            w->phase = PHASE_FORWARD;
+            w->boot_done = true;
+            return;
+        }
+    }
+
     // Start boot animation if configured
     if (cfg->run_boot_anim) {
         const slice_seq_t *seq = get_current_sequence(w);
@@ -285,6 +350,20 @@ void unified_anim_trigger(unified_anim_t *w, uint8_t state_or_toggle, uint32_t n
                 w->phase = PHASE_FORWARD;
             }
             break;
+
+        case ANIM_LOOP:
+            if (w->phase == PHASE_IDLE) {
+                animator_start(&w->anim, seq, true, now);
+                w->phase = PHASE_FORWARD;
+            }
+            break;
+
+        case ANIM_PING_PONG:
+            if (w->phase == PHASE_IDLE) {
+                animator_start(&w->anim, seq, true, now);
+                w->phase = PHASE_FORWARD;
+            }
+            break;
             
         case ANIM_TOGGLE:
             w->desired_on = (state_or_toggle != 0);
@@ -314,6 +393,10 @@ bool unified_anim_render(unified_anim_t *w, uint32_t now) {
             return handle_oneshot_behavior(w, now);
         case ANIM_OUTBACK:
             return handle_outback_behavior(w, now);
+        case ANIM_LOOP:
+            return handle_loop_behavior(w, now);
+        case ANIM_PING_PONG:
+            return handle_ping_pong_behavior(w, now);
         case ANIM_TOGGLE:
             return handle_toggle_behavior(w, now);
         case ANIM_BOOTREV:
