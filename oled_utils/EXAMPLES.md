@@ -194,6 +194,68 @@ void trigger_button_feedback(void) {
 }
 ```
 
+### Layer Transition (Exclusive State Controller)
+
+```c
+// One sequence per logical layer/state (same dimensions/layout)
+DEFINE_SLICE_SEQ(base_seq,
+    SLICE72x12(base_0),
+    SLICE72x12(base_1),
+    SLICE72x12(base_2)
+);
+
+DEFINE_SLICE_SEQ(nav_seq,
+    SLICE72x12(nav_0),
+    SLICE72x12(nav_1),
+    SLICE72x12(nav_2)
+);
+
+DEFINE_SLICE_SEQ(num_seq,
+    SLICE72x12(num_0),
+    SLICE72x12(num_1),
+    SLICE72x12(num_2)
+);
+
+enum { LAYER_COUNT = 3 };
+
+static const slice_seq_t *const layer_seq_map[LAYER_COUNT] = {
+    [0] = &base_seq,
+    [1] = &nav_seq,
+    [2] = &num_seq,
+};
+
+static const unified_anim_config_t layer_config =
+    UNIFIED_LAYER_CONFIG(layer_seq_map, LAYER_COUNT, 56, 0);
+
+static unified_anim_t layer_widget;
+static uint8_t last_layer_request = 0;
+
+void init_layer_widget(void) {
+    uint32_t now = timer_read32();
+    uint8_t initial = get_highest_layer(layer_state);
+    if (initial >= LAYER_COUNT) initial = 0;
+
+    last_layer_request = initial;
+    unified_anim_init(&layer_widget, &layer_config, initial, now);
+}
+
+void update_layer_widget(void) {
+    uint32_t now = timer_read32();
+    uint8_t desired = get_highest_layer(layer_state);
+    if (desired >= LAYER_COUNT) desired = 0;
+
+    // Optional: trigger extra frame effects only when request changes
+    if (desired != last_layer_request) {
+        // trigger_layer_transition_effect();
+        last_layer_request = desired;
+    }
+
+    // Option 1 semantics: rapid changes skip intermediates and converge to latest
+    unified_anim_trigger(&layer_widget, desired, now);
+    unified_anim_render(&layer_widget, now);
+}
+```
+
 ## Enhanced Declarative Widgets
 
 ### Layer Indicator with Error Handling

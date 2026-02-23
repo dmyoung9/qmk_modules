@@ -73,6 +73,22 @@ static anim_result_t render_animation_frame(unified_anim_t *w, uint32_t now) {
     }
 }
 
+static bool start_layer_exit(unified_anim_t *w, uint32_t now) {
+    const slice_seq_t *seq = get_current_sequence(w);
+    if (!seq || !seq->count) return false;
+    animator_start(&w->anim, seq, false, now);
+    w->phase = PHASE_REVERSE;
+    return true;
+}
+
+static bool start_layer_enter(unified_anim_t *w, uint32_t now) {
+    const slice_seq_t *seq = get_current_sequence(w);
+    if (!seq || !seq->count) return false;
+    animator_start(&w->anim, seq, true, now);
+    w->phase = PHASE_FORWARD;
+    return true;
+}
+
 // ============================================================================
 // Behavior-Specific Logic
 // ============================================================================
@@ -89,9 +105,10 @@ static bool handle_oneshot_behavior(unified_anim_t *w, uint32_t now) {
         case PHASE_BOOT:
         case PHASE_FORWARD: {
             anim_result_t r = render_animation_frame(w, now);
+            bool          was_boot = (w->phase == PHASE_BOOT);
             if (r == ANIM_DONE_AT_END) {
                 w->phase = PHASE_IDLE;
-                if (w->phase == PHASE_BOOT) w->boot_done = true;
+                if (was_boot) w->boot_done = true;
                 draw_steady_frame(w);
                 return true;
             }
@@ -287,6 +304,63 @@ static bool handle_bootrev_behavior(unified_anim_t *w, uint32_t now) {
     }
 }
 
+/**
+ * @brief Handle layer transition behavior (Option 1 semantics)
+ */
+static bool handle_layer_transition_behavior(unified_anim_t *w, uint32_t now) {
+    switch (w->phase) {
+        case PHASE_IDLE:
+            draw_steady_frame(w);
+            return false;
+
+        case PHASE_REVERSE: {
+            anim_result_t r = render_animation_frame(w, now);
+            if (r == ANIM_RUNNING) return false;
+
+            if (r == ANIM_DONE_AT_START) {
+                w->current_state = w->target_state;
+                if (!start_layer_enter(w, now)) {
+                    w->phase = PHASE_IDLE;
+                    draw_steady_frame(w);
+                }
+                return false;
+            }
+
+            w->phase = PHASE_IDLE;
+            draw_steady_frame(w);
+            if (w->pending_state != 0xFF && w->pending_state != w->current_state) {
+                w->target_state  = w->pending_state;
+                w->pending_state = 0xFF;
+                (void)start_layer_exit(w, now);
+            }
+            return false;
+        }
+
+        case PHASE_FORWARD: {
+            anim_result_t r = render_animation_frame(w, now);
+            if (r == ANIM_RUNNING) return false;
+
+            if (r == ANIM_DONE_AT_END) {
+                w->phase = PHASE_IDLE;
+                draw_steady_frame(w);
+                return true;
+            }
+
+            w->phase = PHASE_IDLE;
+            draw_steady_frame(w);
+            if (w->pending_state != 0xFF && w->pending_state != w->current_state) {
+                w->target_state  = w->pending_state;
+                w->pending_state = 0xFF;
+                (void)start_layer_exit(w, now);
+            }
+            return false;
+        }
+
+        default:
+            return false;
+    }
+}
+
 // ============================================================================
 // Public API Implementation
 // ============================================================================
@@ -332,8 +406,8 @@ void unified_anim_init(unified_anim_t *w, const unified_anim_config_t *cfg,
 
 void unified_anim_trigger(unified_anim_t *w, uint8_t state_or_toggle, uint32_t now) {
     const slice_seq_t *seq = get_current_sequence(w);
-    if (!seq || !seq->count) return;
-    
+    if ((w->cfg->behavior != ANIM_LAYER_TRANSITION) && (!seq || !seq->count)) return;
+
     w->last_trigger = now;
     
     switch (w->cfg->behavior) {
@@ -382,7 +456,46 @@ void unified_anim_trigger(unified_anim_t *w, uint8_t state_or_toggle, uint32_t n
             break;
             
         case ANIM_LAYER_TRANSITION:
-            // TODO: Implement layer transition logic
+            if (state_or_toggle >= w->cfg->state_count) {
+                break;
+            }
+
+            if (w->phase == PHASE_IDLE) {
+                if (state_or_toggle != w->current_state) {
+                    w->target_state  = state_or_toggle;
+                    w->pending_state = 0xFF;
+                    (void)start_layer_exit(w, now);
+                }
+                break;
+            }
+
+            if (w->phase == PHASE_REVERSE) {
+                if (state_or_toggle == w->current_state) {
+                    if (w->anim.dir < 0) {
+                        animator_reverse(&w->anim, now);
+                    }
+                    w->target_state  = w->current_state;
+                    w->pending_state = 0xFF;
+                } else {
+                    if (w->anim.dir > 0) {
+                        animator_reverse(&w->anim, now);
+                    }
+                    w->target_state = state_or_toggle;
+                }
+                break;
+            }
+
+            if (w->phase == PHASE_FORWARD) {
+                if (state_or_toggle != w->current_state) {
+                    if (w->anim.dir > 0) {
+                        animator_reverse(&w->anim, now);
+                    }
+                    w->pending_state = state_or_toggle;
+                } else if (w->anim.dir < 0) {
+                    animator_reverse(&w->anim, now);
+                    w->pending_state = 0xFF;
+                }
+            }
             break;
     }
 }
@@ -402,8 +515,7 @@ bool unified_anim_render(unified_anim_t *w, uint32_t now) {
         case ANIM_BOOTREV:
             return handle_bootrev_behavior(w, now);
         case ANIM_LAYER_TRANSITION:
-            // TODO: Implement layer transition behavior
-            return false;
+            return handle_layer_transition_behavior(w, now);
         default:
             return false;
     }

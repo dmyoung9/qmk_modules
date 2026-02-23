@@ -145,6 +145,26 @@ static anim_result_t step_then_draw(widget_t *w, uint32_t now) {
     return r;
 }
 
+static void set_widget_error(widget_t *w, widget_error_t error, uint32_t context) {
+    if (!w) return;
+    w->last_error      = error;
+    w->error_state     = (error != WIDGET_ERROR_NONE);
+    w->last_error_time = 0;
+    if (error != WIDGET_ERROR_NONE && w->error_count < UINT8_MAX) {
+        w->error_count++;
+    }
+    if (w->cfg && w->cfg->on_error) {
+        w->cfg->on_error(w->cfg, (uint8_t)error, context);
+    }
+}
+
+static void clear_widget_error(widget_t *w) {
+    if (!w) return;
+    w->last_error  = WIDGET_ERROR_NONE;
+    w->error_state = false;
+    w->retry_count = 0;
+}
+
 // ============================================================================
 // Public API Implementation
 // ============================================================================
@@ -163,6 +183,13 @@ void widget_init(widget_t *w, const widget_config_t *cfg, uint8_t initial_state,
     w->last_state_change = now;
     w->stuck_timeout = 0;
     w->initialized = true;
+    w->last_query_time   = now;
+    w->last_error        = WIDGET_ERROR_NONE;
+    w->error_count       = 0;
+    w->retry_count       = 0;
+    w->last_error_time   = 0;
+    w->error_state       = false;
+    w->recovery_mode     = false;
 
     // If bbox not provided, you *can* compute a safe default from the steady frame,
     // but we’ll trust the declarative bbox to avoid surprises.
@@ -285,3 +312,63 @@ void widget_tick(widget_t *w, uint32_t now) {
     }
 }
 
+bool widget_validate_config(const widget_config_t *cfg) {
+    if (!cfg) return false;
+    if (!cfg->states || cfg->state_count == 0) return false;
+    if (!cfg->query && !cfg->legacy_query) return false;
+    if (cfg->initial_state >= cfg->state_count) return false;
+
+    for (uint8_t i = 0; i < cfg->state_count; i++) {
+        const state_desc_t *sd = &cfg->states[i];
+        if (!sd || !sd->seq) return false;
+        if (sd->seq->count == 0) return false;
+        if (sd->enter_dir != ENTER_FWD && sd->enter_dir != ENTER_REV) return false;
+    }
+
+    if (cfg->validate) {
+        return cfg->validate(cfg, (const widget_t *)0);
+    }
+
+    return true;
+}
+
+bool widget_force_state(widget_t *w, uint8_t new_state, uint32_t now) {
+    if (!w || !w->cfg || !w->initialized) return false;
+    if (new_state >= w->cfg->state_count) {
+        set_widget_error(w, WIDGET_ERROR_INVALID_STATE, new_state);
+        return false;
+    }
+
+    const state_desc_t *sd = &w->cfg->states[new_state];
+    if (!sd || !sd->seq || sd->seq->count == 0) {
+        set_widget_error(w, WIDGET_ERROR_NULL_SEQUENCE, new_state);
+        return false;
+    }
+
+    w->phase             = TR_IDLE;
+    w->anim.active       = false;
+    w->anim.count        = 0;
+    w->src               = new_state;
+    w->dst               = new_state;
+    w->pending           = 0xFF;
+    w->last_query_result = new_state;
+    w->last_state_change = now;
+    w->last_query_time   = now;
+    w->stuck_timeout     = 0;
+    clear_widget_error(w);
+    draw_state_steady(w, new_state);
+    return true;
+}
+
+void widget_reset(widget_t *w, uint32_t now) {
+    if (!w || !w->cfg) return;
+    clear_widget_error(w);
+    w->recovery_mode = false;
+    w->pending       = 0xFF;
+    (void)widget_force_state(w, w->cfg->initial_state, now);
+}
+
+widget_error_t widget_get_error(const widget_t *w) {
+    if (!w) return WIDGET_ERROR_INVALID_CONFIG;
+    return w->last_error;
+}
