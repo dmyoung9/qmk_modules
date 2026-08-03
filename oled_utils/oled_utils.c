@@ -164,3 +164,29 @@ void draw_slice_px(const slice_t *s, uint8_t x_px, uint8_t y_px) {
         }
     }
 }
+
+void draw_slice_px_or(const slice_t *s, uint8_t x_px, uint8_t y_px) {
+    if (!slice_is_valid(s)) return;
+    if (x_px >= OLED_DISPLAY_WIDTH || y_px >= OLED_DISPLAY_HEIGHT) return;
+
+    const uint8_t actual_height = slice_height_px(s);
+
+    for (uint8_t page = 0; page < s->pages; page++) {
+        const uint8_t page_y = (uint8_t)(page * 8);
+        for (uint8_t x = 0; x < s->width && (uint16_t)x_px + x < OLED_DISPLAY_WIDTH; x++) {
+            const uint8_t src = pgm_read_byte(s->data + ((uint16_t)page * s->width) + x);
+            if (!src) continue;
+
+            for (uint8_t bit = 0; bit < 8; bit++) {
+                const uint8_t local_y = (uint8_t)(page_y + bit);
+                if (local_y >= actual_height) break;
+                if ((src & (1 << bit)) == 0) continue;
+
+                const uint8_t dst_y = (uint8_t)(y_px + local_y);
+                if (dst_y >= OLED_DISPLAY_HEIGHT) continue;
+
+                oled_write_pixel((uint8_t)(x_px + x), dst_y, true);
+            }
+        }
+    }
+}

@@ -164,6 +164,7 @@ widget_tick(&layer_widget, timer_read32());
 - `void clear_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h)` - Clear rectangular area
 - `void clear_span16(uint8_t x, uint8_t y)` - Clear 16×8 pixel span
 - `void draw_slice_px(const slice_t *s, uint8_t x, uint8_t y)` - Draw bitmap slice
+- `void draw_slice_px_or(const slice_t *s, uint8_t x, uint8_t y)` - Draw bitmap slice with OR blending
 
 #### SLICE Macros
 - `SLICE8x8(data)`, `SLICE16x8(data)`, `SLICE32x8(data)` - 1 page high

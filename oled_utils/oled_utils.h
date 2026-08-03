@@ -58,6 +58,19 @@ void clear_span16(uint8_t x_px, uint8_t y_px);
  */
 void draw_slice_px(const slice_t *s, uint8_t x_px, uint8_t y_px);
 
+/**
+ * @brief Draw a bitmap slice with OR blending
+ *
+ * Sets only the source slice's on pixels, preserving all existing display
+ * pixels. This is useful for layering glyphs or indicators without clearing
+ * their background.
+ *
+ * @param s Pointer to slice_t structure containing bitmap data
+ * @param x_px X coordinate in pixels
+ * @param y_px Y coordinate in pixels
+ */
+void draw_slice_px_or(const slice_t *s, uint8_t x_px, uint8_t y_px);
+
 // ============================================================================
 // Performance and Implementation Notes
 // ============================================================================
